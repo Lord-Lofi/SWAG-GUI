@@ -1,45 +1,16 @@
 # SWAG Config GUI
 
-A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](https://docs.linuxserver.io/general/swag/) (Secure Web Application Gateway). Manages nginx proxy conf files across multiple SWAG instances without SSH access.
+A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](https://docs.linuxserver.io/general/swag/). Manages nginx proxy conf files across multiple SWAG instances without SSH access.
 
 ---
 
-## CRITICAL SECURITY RULE — READ FIRST
+## Features
 
-**This repository is public. It must never contain information that identifies your network or infrastructure.**
-
-The following are permanently banned from this codebase — in source files, comments, commit messages, branch names, and issue descriptions:
-
-| Banned | Instead |
-|---|---|
-| Internal domain names or hostnames | Use environment variables |
-| Internal IP addresses (LAN or otherwise) | Use environment variables |
-| Docker container names specific to your deployment | Use environment variables |
-| PUID / PGID values | Use environment variables |
-| File system paths that reveal your machine layout | Use environment variables |
-| Usernames, passwords, tokens, or API keys | Use `.env` (gitignored) |
-
-**All environment-specific values live in `.env`, which is gitignored.**  
-Use `.env.example` (placeholder values only) to document what is required.  
-Never commit `.env`. Never commit `docker-compose.yml` if it contains real values.
-
-This rule exists because the repository is public and a single slip can permanently expose your internal network topology. Once committed and pushed, data is public — even if later deleted, it may have been indexed or cached.
-
----
-
-## What it does
-
-- **Proxy conf manager** — list, enable, disable, and edit `.conf` files for both SWAG instances
+- **Proxy conf manager** — list, enable, disable, and edit active `.conf` files per instance
 - **Template browser** — browse Linuxserver.io's `.conf.sample` library and activate with one click
 - **Monaco editor** — syntax-highlighted in-browser conf editing
-- **Nginx validation gate** — every save runs `nginx -t` before reload; if validation fails, the reload is blocked and the error is shown inline
+- **Nginx validation gate** — every save runs `nginx -t` before reload; broken configs are blocked and the error is shown inline
 - **Dual-instance support** — manages `swag-external` and `swag-internal` from a single interface
-
-## What it does not do
-
-- Expose any port to the internet (proxied through `swag-internal` only)
-- Touch SSL certificates, DNS credentials, or any SWAG config outside `nginx/proxy-confs/`
-- Require a Docker registry — application code self-updates via `git pull` on startup
 
 ---
 
@@ -57,40 +28,35 @@ Browser (LAN)
             └── Docker API (exec + containers endpoints only)
 ```
 
-The GUI container never holds the raw Docker socket. All Docker API access is proxied through [Tecnativa docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy), which limits exposure to exactly the two endpoints required: `exec` and `containers`.
+The GUI container never holds the raw Docker socket. All Docker API access goes through [Tecnativa docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy), scoped to the `exec` and `containers` endpoints only.
 
-### Self-update mechanism
+### Self-update
 
 | Layer | Mechanism | Updates |
 |---|---|---|
-| Base runtime | Watchtower | Node.js, npm, OS packages in the image |
+| Base runtime | Watchtower | Node.js, npm, OS packages |
 | Application code | `git pull` on entrypoint | React frontend, Express API |
-| Dependencies | Conditional `npm ci` | Only runs when `package-lock.json` changes |
+| Dependencies | Conditional `npm ci` | Only when `package-lock.json` changes |
 
 ---
 
 ## Setup
 
-### 1. Copy and fill in environment variables
+### 1. Environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your actual values. See `.env.example` for descriptions of each variable. Do not commit `.env`.
+Fill in `.env` with your values. See `.env.example` for descriptions. Do not commit `.env`.
 
-### 2. Copy and fill in the compose file
+### 2. Compose file
 
 ```bash
 cp docker-compose.example.yml docker-compose.yml
 ```
 
-Replace all placeholders in `docker-compose.yml`:
-- `/path/to/swag-external/nginx/proxy-confs` → your actual host path
-- `/path/to/swag-internal/nginx/proxy-confs` → your actual host path
-- `YOUR_LAN_IP` → your LAN IP address for the break-glass port
-
-Do not commit `docker-compose.yml` if it contains real values.
+Replace all placeholders in `docker-compose.yml` with your actual paths and LAN IP.
 
 ### 3. Start
 
@@ -98,15 +64,15 @@ Do not commit `docker-compose.yml` if it contains real values.
 docker compose up -d
 ```
 
-On first start, the entrypoint clones the repository and builds the frontend (~60s). Subsequent warm restarts complete in ~15–20s using the cached volume.
+Cold start takes ~60s (clone + build). Warm restarts with a cached volume take ~15–20s.
 
-### 4. Wire up authentication
+### 4. Authentication
 
-Route the GUI through `swag-internal` with Authelia forward auth. Linuxserver.io provides a ready-made `authelia.conf.sample` snippet. The GUI carries no auth code of its own — Authelia is the auth layer.
+Route the GUI through `swag-internal` with Authelia forward auth. Linuxserver.io ships a ready-made `authelia.conf.sample` snippet. The GUI carries no auth code of its own.
 
 ### 5. Break-glass access
 
-The GUI exposes a secondary port bound to your LAN IP (configured in `.env` as `BREAKGLASS_PORT`). This port bypasses `swag-internal` and Authelia entirely. Use it to recover when SWAG is down. Document the URL in a private runbook.
+A secondary port bound to your LAN IP (set via `BREAKGLASS_PORT` in `.env`) provides direct access independent of SWAG and Authelia. Use it if SWAG is down.
 
 ---
 
@@ -114,7 +80,7 @@ The GUI exposes a secondary port bound to your LAN IP (configured in `.env` as `
 
 ```bash
 cp .env.example .env
-# fill in .env with your values
+# fill in .env
 npm install
 npm run dev
 ```
@@ -123,13 +89,15 @@ The Vite dev server proxies `/api` requests to the Express backend on port 3000.
 
 ---
 
-## Security notes
+## Security
 
-- **Docker socket proxy** — the Tecnativa proxy allows only `CONTAINERS=1` and `EXEC=1`. All other Docker API endpoints are denied by default. The raw socket is never mounted into the GUI container.
-- **Volume mounts** — only `nginx/proxy-confs/` is mounted. SSL certificates, DNS credentials, and all other SWAG config directories are excluded.
-- **Path traversal** — all filename parameters are validated server-side before any file operation.
-- **Nginx validation gate** — `nginx -t` runs before every reload. A failing config cannot reach nginx.
-- **Supply chain** — `npm ci --ignore-scripts` blocks postinstall script execution during the entrypoint update.
+- Docker socket is proxied through Tecnativa — only `exec` and `containers` endpoints are permitted
+- Volume mounts are scoped to `nginx/proxy-confs/` only — certs and DNS credentials are excluded
+- All filename inputs are validated server-side to prevent path traversal
+- `nginx -t` runs before every reload — a failing config cannot reach nginx
+- `npm ci --ignore-scripts` blocks postinstall script execution at startup
+
+All environment-specific values (container names, paths, IPs, PUID/PGID) belong in `.env`, which is gitignored. See `.env.example` for the full list.
 
 ---
 

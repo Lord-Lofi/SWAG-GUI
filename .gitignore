@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SECURITY — READ BEFORE COMMITTING
+#
+# This repository is PUBLIC. The following must NEVER appear in any committed
+# file, comment, commit message, or branch name:
+#
+#   • Internal domain names or hostnames
+#   • Internal IP addresses (LAN, RFC1918, or otherwise)
+#   • Docker container names specific to your deployment
+#   • PUID / PGID values
+#   • Usernames, passwords, tokens, or API keys
+#   • File system paths that reveal machine layout
+#   • Any value that identifies your network or infrastructure
+#
+# All environment-specific values belong in .env — which is gitignored below.
+# Use .env.example (with placeholder values only) for documentation.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Environment — all real values live here, never in version control
+.env
+.env.local
+.env.*.local
+*.env
+
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+frontend/.vite/
+
+# Entrypoint runtime cache
+.cache/
+*.lock_hash
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

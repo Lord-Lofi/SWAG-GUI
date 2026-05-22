@@ -1,0 +1,17 @@
+{
+  "name": "swag-config-gui",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=frontend",
+    "dev": "concurrently \"npm run dev --workspace=frontend\" \"npm run dev --workspace=backend\"",
+    "start": "node backend/src/server.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

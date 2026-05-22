@@ -1,0 +1,79 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SWAG Config GUI — Example docker-compose
+#
+# SECURITY NOTICE — THIS FILE IS PUBLIC
+# ──────────────────────────────────────
+# This file contains ONLY placeholder values. Copy it to docker-compose.yml
+# and replace every placeholder before deploying. If your docker-compose.yml
+# contains real values (container names, IPs, paths), do NOT commit it.
+#
+# Placeholders to replace:
+#   YOUR_GITHUB_USERNAME          → your GitHub username
+#   /path/to/swag-external/...   → real path on your host
+#   /path/to/swag-internal/...   → real path on your host
+#   YOUR_LAN_IP                  → your actual LAN IP address
+# ─────────────────────────────────────────────────────────────────────────────
+---
+services:
+
+  swag-gui:
+    build: .
+    container_name: swag-gui
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Narrow mounts: proxy-confs subdirectory only.
+      # SSL certs, DNS credentials, and other sensitive SWAG files are
+      # intentionally excluded from these mounts.
+      - /path/to/swag-external/nginx/proxy-confs:/mnt/swag-external/proxy-confs:rw
+      - /path/to/swag-internal/nginx/proxy-confs:/mnt/swag-internal/proxy-confs:rw
+      # Persistent cache: speeds up warm restarts by avoiding full npm ci + build.
+      - swag-gui-cache:/app/cache
+    ports:
+      # Internal port — proxied by swag-internal. Not directly exposed.
+      - "127.0.0.1:3000:3000"
+      # Break-glass port — direct LAN access, no SWAG or Authelia dependency.
+      # Replace YOUR_LAN_IP with your actual LAN IP. Never bind to 0.0.0.0.
+      - "YOUR_LAN_IP:8080:8080"
+    networks:
+      - swag-gui-net
+    depends_on:
+      - socket-proxy
+
+  # ── Tecnativa docker-socket-proxy ─────────────────────────────────────────
+  # Sits between the GUI container and the Docker daemon.
+  # Only the two endpoints the GUI needs are enabled — everything else is
+  # denied by default. The raw Docker socket is never mounted into swag-gui.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: swag-gui-socket-proxy
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1  # required: list and inspect containers
+      - EXEC=1        # required: create and start exec instances (nginx -t / reload)
+      # All other API endpoints default to 0 (denied).
+      # Do not enable IMAGES, NETWORKS, VOLUMES, or SERVICES unless you add
+      # features that explicitly require them.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - swag-gui-net
+
+  # ── Watchtower (scoped to swag-gui only) ──────────────────────────────────
+  # Keeps the node:lts-alpine base image current — OS packages, Node.js, npm.
+  # Scoped to the swag-gui container only; does not touch your SWAG instances.
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: swag-gui-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 86400 swag-gui
+
+volumes:
+  swag-gui-cache:
+
+networks:
+  swag-gui-net:
+    name: swag-gui-net
+    driver: bridge

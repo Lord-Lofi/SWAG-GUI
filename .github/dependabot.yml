@@ -1,0 +1,44 @@
+# Weekly pull requests to keep dependencies current.
+#
+# Groups keep the number of pull requests down:
+#   - security: all security fixes for an ecosystem in one pull request
+#   - minor-and-patch: routine minor and patch updates in one pull request
+# Major updates (for example Express 4 -> 5) get their own pull request.
+version: 2
+updates:
+  # npm workspaces: the root package-lock.json covers frontend and backend
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Base image in the Dockerfile
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"

@@ -1,0 +1,44 @@
+# Checks SWAG-GUI on every pull request and every push to main.
+# The job name "check" is the required status check in the "main – review" ruleset.
+#
+# main is what the container pulls and runs on startup (see entrypoint.sh),
+# so nothing reaches it without passing this check.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js (LTS, matching node:lts-alpine in the Dockerfile)
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      # Same install as the container: exact versions from package-lock.json,
+      # and no install scripts (blocks postinstall supply-chain attacks).
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build the frontend
+        run: npm run build
+
+      - name: Check the backend parses
+        run: |
+          for file in $(git ls-files 'backend/src/*.js' 'backend/src/**/*.js'); do
+            node --check "$file"
+          done

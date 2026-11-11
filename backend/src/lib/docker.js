@@ -1,5 +1,4 @@
-import fetch from 'node-fetch';
-
+// Uses Node's built-in fetch (no node-fetch dependency).
 const PROXY_URL = process.env.DOCKER_SOCKET_PROXY_URL ?? 'http://socket-proxy:2375';
 
 // Docker's exec stream uses an 8-byte multiplexing header per frame:
@@ -15,7 +14,7 @@ function parseDockerStream(buffer) {
     const frameLen = buffer.readUInt32BE(offset + 4);
     offset += 8;
     if (offset + frameLen > buffer.length) break;
-    const chunk = buffer.slice(offset, offset + frameLen).toString('utf8');
+    const chunk = buffer.subarray(offset, offset + frameLen).toString('utf8');
     offset += frameLen;
     if (streamType === 1) stdout += chunk;
     else if (streamType === 2) stderr += chunk;
@@ -26,7 +25,7 @@ function parseDockerStream(buffer) {
 
 async function exec(containerName, cmd) {
   // Step 1: create exec instance
-  const createRes = await fetch(`${PROXY_URL}/containers/${containerName}/exec`, {
+  const createRes = await fetch(`${PROXY_URL}/containers/${encodeURIComponent(containerName)}/exec`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ AttachStdout: true, AttachStderr: true, Cmd: cmd }),
@@ -54,6 +53,9 @@ async function exec(containerName, cmd) {
 
   // Step 3: retrieve exit code
   const inspectRes = await fetch(`${PROXY_URL}/exec/${execId}/json`);
+  if (!inspectRes.ok) {
+    throw new Error(`Docker exec inspect failed (${inspectRes.status}): ${await inspectRes.text()}`);
+  }
   const { ExitCode: exitCode } = await inspectRes.json();
 
   return { stdout, stderr, exitCode };

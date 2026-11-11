@@ -23,10 +23,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js (LTS, matching node:lts-alpine in the Dockerfile)
+      - name: Set up Node.js (same major version as the Dockerfile's node:26-alpine)
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: 26
           cache: npm
 
       # Same install as the container: exact versions from package-lock.json,
@@ -37,8 +37,24 @@ jobs:
       - name: Build the frontend
         run: npm run build
 
-      - name: Check the backend parses
+      - name: Check the backend and entrypoint parse
         run: |
-          for file in $(git ls-files 'backend/src/*.js' 'backend/src/**/*.js'); do
+          for file in $(git ls-files 'backend/*.js' 'backend/**/*.js'); do
             node --check "$file"
           done
+          sh -n entrypoint.sh
+
+      # This repo is public: local deployment files hold real hostnames, IPs,
+      # paths and password hashes, so they must never be committed.
+      - name: Check no local deployment files are committed
+        run: |
+          found=$(git ls-files '.env' '*.env' '.env.*' 'docker-compose.yml' 'compose.yml' \
+            '*.override.yml' '*.asc' '*.pem' '*.key' | grep -v '^\.env\.example$' || true)
+          if [ -n "$found" ]; then
+            echo "::error::These files must not be committed: $found"
+            exit 1
+          fi
+          if git grep -nE 'scrypt:[A-Za-z0-9_-]{20,}:[A-Za-z0-9_-]{40,}' -- . ; then
+            echo "::error::A real BREAKGLASS_PASSWORD_HASH is committed. Remove it and make a new password."
+            exit 1
+          fi

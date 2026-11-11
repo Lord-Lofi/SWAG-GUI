@@ -48,3 +48,10 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+# Local deployment files: real paths, IPs and keys stay on your machine
+docker-compose.yml
+docker-compose.override.yml
+compose.yml
+compose.override.yml
+*.asc

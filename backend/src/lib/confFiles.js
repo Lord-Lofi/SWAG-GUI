@@ -1,8 +1,8 @@
-import { readdir, readFile, writeFile, copyFile, unlink, chown } from 'fs/promises';
-import { join } from 'path';
+import { readdir, readFile, writeFile, copyFile, unlink, constants } from 'node:fs/promises';
+import { join } from 'node:path';
 
-const FILE_UID = parseInt(process.env.FILE_UID ?? '1000', 10);
-const FILE_GID = parseInt(process.env.FILE_GID ?? '1000', 10);
+// The container runs as FILE_UID:FILE_GID (your SWAG PUID/PGID), so new and
+// edited files already belong to SWAG's user. No chown, and no root, needed.
 
 export async function list(confsPath) {
   const entries = await readdir(confsPath, { withFileTypes: true });
@@ -24,8 +24,10 @@ export async function read(confsPath, filename) {
 export async function write(confsPath, filename, content) {
   assertSafeFilename(filename);
   const filePath = join(confsPath, filename);
+  if (typeof content !== 'string') {
+    throw Object.assign(new Error('content must be a string'), { status: 400 });
+  }
   await writeFile(filePath, content, 'utf8');
-  await chown(filePath, FILE_UID, FILE_GID);
 }
 
 export async function enableSample(confsPath, sampleName) {
@@ -35,8 +37,13 @@ export async function enableSample(confsPath, sampleName) {
   assertSafeFilename(sampleName);
   const targetName = sampleName.replace(/\.sample$/, '');
   const dest = join(confsPath, targetName);
-  await copyFile(join(confsPath, sampleName), dest);
-  await chown(dest, FILE_UID, FILE_GID);
+  // COPYFILE_EXCL: never overwrite an existing active config
+  await copyFile(join(confsPath, sampleName), dest, constants.COPYFILE_EXCL).catch((err) => {
+    if (err.code === 'EEXIST') {
+      throw Object.assign(new Error(`${targetName} already exists`), { status: 409 });
+    }
+    throw err;
+  });
   return targetName;
 }
 
@@ -50,7 +57,14 @@ export async function remove(confsPath, filename) {
 
 // Reject any filename that could be used for path traversal
 function assertSafeFilename(filename) {
-  if (!filename || filename.includes('/') || filename.includes('..') || filename.includes('\0')) {
+  if (
+    typeof filename !== 'string' ||
+    !filename ||
+    filename.includes('/') ||
+    filename.includes('\\') ||
+    filename.includes('..') ||
+    filename.includes('\0')
+  ) {
     throw Object.assign(new Error('Invalid filename'), { status: 400 });
   }
 }

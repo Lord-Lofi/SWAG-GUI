@@ -140,7 +140,8 @@ The Vite dev server proxies `/api` requests to the Express backend on port 3000.
 - Docker socket is proxied through Tecnativa (pinned release) — only `exec` and `containers` endpoints are permitted, on an internal network with no internet access
 - The GUI container runs as your SWAG PUID/PGID, not root, with all Linux capabilities dropped and `no-new-privileges`
 - Volume mounts are scoped to `nginx/proxy-confs/` only — certs and DNS credentials are excluded
-- All filename inputs are validated server-side to prevent path traversal
+- All filenames are checked against an allowlist and must resolve inside the proxy-confs folder, which prevents path traversal
+- Requests are rate-limited (300 per minute per client address)
 - `nginx -t` runs before every reload — a failing config cannot reach nginx
 - Changes through the API require a custom header and a same-site origin, which blocks cross-site request forgery
 - Security headers on every response: a strict Content-Security-Policy (no third-party code), no framing, no referrer

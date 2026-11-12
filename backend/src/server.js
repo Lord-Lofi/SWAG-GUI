@@ -1,4 +1,5 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -16,6 +17,22 @@ function buildApp({ auth } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use(securityHeaders);
+
+  // Caps requests per client address. Generous for one admin clicking around,
+  // but stops scripted floods of file reads, writes and reloads. Behind SWAG,
+  // every request arrives from SWAG's address, so this is a shared limit.
+  app.use(
+    rateLimit({
+      windowMs: 60 * 1000,
+      limit: 300,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+      message: { error: 'Too many requests. Wait a minute and try again.' },
+      // SWAG adds X-Forwarded-For; limits are keyed on the connecting address
+      // on purpose (the header could be forged on the break-glass port).
+      validate: { xForwardedForHeader: false },
+    })
+  );
   if (auth) app.use(auth);
 
   app.use(express.json({ limit: '1mb' }));

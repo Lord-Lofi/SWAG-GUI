@@ -8,7 +8,7 @@ export default function ConfList({ confs, onEdit, onDelete }) {
   }
 
   return (
-    <div className="mt-2 rounded border border-gray-800 divide-y divide-gray-800">
+    <div className="mt-2 rounded-sm border border-gray-800 divide-y divide-gray-800">
       {confs.map(conf => (
         <div
           key={conf.name}
@@ -18,7 +18,7 @@ export default function ConfList({ confs, onEdit, onDelete }) {
           <div className="flex gap-2">
             <button
               onClick={() => onEdit(conf.name)}
-              className="px-3 py-1 rounded text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
+              className="px-3 py-1 rounded-sm text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
             >
               Edit
             </button>
@@ -28,7 +28,7 @@ export default function ConfList({ confs, onEdit, onDelete }) {
                   onDelete(conf.name);
                 }
               }}
-              className="px-3 py-1 rounded text-xs bg-red-950 hover:bg-red-900 text-red-300 transition-colors border border-red-900"
+              className="px-3 py-1 rounded-sm text-xs bg-red-950 hover:bg-red-900 text-red-300 transition-colors border border-red-900"
             >
               Delete
             </button>

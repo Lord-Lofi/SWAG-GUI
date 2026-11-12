@@ -134,13 +134,13 @@ export default function App() {
         <div className="ml-auto flex gap-2">
           <button
             onClick={handleValidate}
-            className="px-3 py-1.5 rounded text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
+            className="px-3 py-1.5 rounded-sm text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
           >
             Validate
           </button>
           <button
             onClick={handleReload}
-            className="px-3 py-1.5 rounded text-xs bg-blue-700 hover:bg-blue-600 text-white transition-colors"
+            className="px-3 py-1.5 rounded-sm text-xs bg-blue-700 hover:bg-blue-600 text-white transition-colors"
           >
             Reload nginx
           </button>

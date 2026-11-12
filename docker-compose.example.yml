@@ -1,79 +1,107 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# SWAG Config GUI — Example docker-compose
+# -----------------------------------------------------------------------------
+# SWAG Config GUI - Example docker-compose
 #
-# SECURITY NOTICE — THIS FILE IS PUBLIC
-# ──────────────────────────────────────
+# SECURITY NOTICE - THIS FILE IS PUBLIC
+# -------------------------------------
 # This file contains ONLY placeholder values. Copy it to docker-compose.yml
-# and replace every placeholder before deploying. If your docker-compose.yml
-# contains real values (container names, IPs, paths), do NOT commit it.
+# and replace every placeholder before deploying. docker-compose.yml is
+# gitignored; never commit real container names, IPs or paths.
 #
 # Placeholders to replace:
-#   YOUR_GITHUB_USERNAME          → your GitHub username
-#   /path/to/swag-external/...   → real path on your host
-#   /path/to/swag-internal/...   → real path on your host
-#   YOUR_LAN_IP                  → your actual LAN IP address
-# ─────────────────────────────────────────────────────────────────────────────
+#   /path/to/swag-external/...   -> real path on your host
+#   /path/to/swag-internal/...   -> real path on your host
+#   YOUR_LAN_IP                  -> your LAN IP (only if you enable break-glass)
+#
+# ${FILE_UID} and ${FILE_GID} are read from your .env file automatically.
+# -----------------------------------------------------------------------------
 ---
 services:
 
   swag-gui:
-    build: .
+    build:
+      context: .
+      args:
+        FILE_UID: ${FILE_UID:?Set FILE_UID in .env}
+        FILE_GID: ${FILE_GID:?Set FILE_GID in .env}
     container_name: swag-gui
     restart: unless-stopped
     env_file: .env
+    # Runs as your SWAG PUID/PGID, never as root, with no extra privileges.
+    user: "${FILE_UID}:${FILE_GID}"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     volumes:
       # Narrow mounts: proxy-confs subdirectory only.
       # SSL certs, DNS credentials, and other sensitive SWAG files are
       # intentionally excluded from these mounts.
       - /path/to/swag-external/nginx/proxy-confs:/mnt/swag-external/proxy-confs:rw
       - /path/to/swag-internal/nginx/proxy-confs:/mnt/swag-internal/proxy-confs:rw
-      # Persistent cache: speeds up warm restarts by avoiding full npm ci + build.
+      # Persistent app checkout: lets the GUI restart on the last verified
+      # version if GitHub is unreachable, and makes warm restarts fast.
+      - swag-gui-repo:/app/repo
       - swag-gui-cache:/app/cache
+      # Optional: your public GPG key, for VERIFY_SIGNATURES=true in .env.
+      # A public key is not a secret, but keep the file out of git anyway.
+      # - ./trusted-signing-key.asc:/app/trusted-signing-key.asc:ro
     ports:
-      # Internal port — proxied by swag-internal. Not directly exposed.
+      # Internal port - proxied by swag-internal. Not directly exposed.
       - "127.0.0.1:3000:3000"
-      # Break-glass port — direct LAN access, no SWAG or Authelia dependency.
-      # Replace YOUR_LAN_IP with your actual LAN IP. Never bind to 0.0.0.0.
-      - "YOUR_LAN_IP:8080:8080"
+      # Break-glass port - direct LAN access, no SWAG or Authelia dependency.
+      # Off by default. To enable it, set BREAKGLASS_PORT=8080 and
+      # BREAKGLASS_PASSWORD_HASH in .env, then uncomment this line with your
+      # LAN IP. Never bind to 0.0.0.0.
+      # - "YOUR_LAN_IP:8080:8080"
     networks:
       - swag-gui-net
+      - socket-proxy-net
     depends_on:
       - socket-proxy
 
-  # ── Tecnativa docker-socket-proxy ─────────────────────────────────────────
-  # Sits between the GUI container and the Docker daemon.
-  # Only the two endpoints the GUI needs are enabled — everything else is
-  # denied by default. The raw Docker socket is never mounted into swag-gui.
+  # -- Tecnativa docker-socket-proxy -------------------------------------------
+  # Sits between the GUI container and the Docker daemon. The raw Docker
+  # socket is never mounted into swag-gui.
+  #
+  # Pinned to a release instead of :latest so an upstream change can't reach
+  # this container unannounced. Check for new releases at
+  # https://github.com/Tecnativa/docker-socket-proxy/releases
   socket-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    image: tecnativa/docker-socket-proxy:v0.5.0
     container_name: swag-gui-socket-proxy
     restart: unless-stopped
     environment:
-      - CONTAINERS=1  # required: list and inspect containers
-      - EXEC=1        # required: create and start exec instances (nginx -t / reload)
-      # All other API endpoints default to 0 (denied).
-      # Do not enable IMAGES, NETWORKS, VOLUMES, or SERVICES unless you add
-      # features that explicitly require them.
+      - CONTAINERS=1  # required: find the SWAG containers
+      - EXEC=1        # required: run nginx -t / nginx -s reload inside them
+      - POST=1        # required: creating and starting an exec is a POST request
+      # All other API sections default to 0 (denied). Do not enable IMAGES,
+      # NETWORKS, VOLUMES, or SERVICES unless a feature explicitly needs them.
+      #
+      # Note: POST=1 with CONTAINERS=1 also allows container create/start/stop
+      # through this proxy. Only swag-gui can reach it (socket-proxy-net is
+      # internal), which is why the GUI itself must stay locked down.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    security_opt:
+      - no-new-privileges:true
     networks:
-      - swag-gui-net
+      - socket-proxy-net
 
-  # ── Watchtower (scoped to swag-gui only) ──────────────────────────────────
-  # Keeps the node:lts-alpine base image current — OS packages, Node.js, npm.
-  # Scoped to the swag-gui container only; does not touch your SWAG instances.
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: swag-gui-watchtower
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 86400 swag-gui
+  # Watchtower was removed: it can't update an image built locally with
+  # "build: .", needed read-write access to the raw Docker socket, and the
+  # project was archived in December 2025. To update the base image:
+  #   git pull && docker compose build --pull && docker compose up -d
 
 volumes:
+  swag-gui-repo:
   swag-gui-cache:
 
 networks:
   swag-gui-net:
     name: swag-gui-net
     driver: bridge
+  # Internal: no internet access, only swag-gui and socket-proxy are on it.
+  socket-proxy-net:
+    name: swag-gui-socket-proxy-net
+    driver: bridge
+    internal: true

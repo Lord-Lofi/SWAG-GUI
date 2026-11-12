@@ -8,7 +8,7 @@ export default function TemplateBrowser({ templates, onActivate, onPreview }) {
   }
 
   return (
-    <div className="mt-2 rounded border border-gray-800 divide-y divide-gray-800">
+    <div className="mt-2 rounded-sm border border-gray-800 divide-y divide-gray-800">
       {templates.map(t => (
         <div
           key={t.name}
@@ -18,13 +18,13 @@ export default function TemplateBrowser({ templates, onActivate, onPreview }) {
           <div className="flex gap-2">
             <button
               onClick={() => onPreview(t.name)}
-              className="px-3 py-1 rounded text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
+              className="px-3 py-1 rounded-sm text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
             >
               Preview
             </button>
             <button
               onClick={() => onActivate(t.name)}
-              className="px-3 py-1 rounded text-xs bg-green-950 hover:bg-green-900 text-green-300 transition-colors border border-green-900"
+              className="px-3 py-1 rounded-sm text-xs bg-green-950 hover:bg-green-900 text-green-300 transition-colors border border-green-900"
             >
               Activate
             </button>

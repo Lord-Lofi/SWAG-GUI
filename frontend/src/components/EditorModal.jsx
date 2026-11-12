@@ -58,14 +58,14 @@ export default function EditorModal({ name, content, onSave, onClose }) {
           <div className="flex gap-2 shrink-0">
             <button
               onClick={onClose}
-              className="px-4 py-1.5 rounded text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
+              className="px-4 py-1.5 rounded-sm text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-1.5 rounded text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-40"
+              className="px-4 py-1.5 rounded-sm text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-40"
             >
               {saving ? 'Saving…' : 'Save & Reload'}
             </button>

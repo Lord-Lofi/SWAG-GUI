@@ -1,7 +1,7 @@
 export default function InstanceSwitcher({ instances, active, onChange }) {
   if (instances.length === 0) return null;
   return (
-    <div className="flex rounded overflow-hidden border border-gray-700">
+    <div className="flex rounded-sm overflow-hidden border border-gray-700">
       {instances.map(inst => (
         <button
           key={inst.id}

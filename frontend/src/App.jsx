@@ -81,6 +81,22 @@ export default function App() {
     refreshConfs();
   }
 
+  async function handleErrorPages() {
+    setStatus({ type: 'info', message: 'Installing error pages...' });
+    try {
+      const r = await api.errorPages.install(activeInstance);
+      setStatus({
+        type: 'success',
+        message: 'Error pages installed and up to date; nginx -t passed.\n\n' +
+          'New hosts include them automatically. For an existing config, add this line inside its server block:\n' +
+          `    ${r.includeLine}`,
+      });
+    } catch (err) {
+      setStatus({ type: 'error', message: `${err.message}${err.data?.output ? `\n\n${err.data.output}` : ''}` });
+    }
+    refreshConfs();
+  }
+
   async function handleValidate() {
     setStatus({ type: 'info', message: 'Running nginx -t...' });
     const result = await api.nginx.validate(activeInstance);
@@ -151,6 +167,14 @@ export default function App() {
             className="px-3 py-1.5 rounded-sm text-xs bg-green-700 hover:bg-green-600 text-white transition-colors disabled:opacity-40"
           >
             + Add host
+          </button>
+          <button
+            onClick={handleErrorPages}
+            disabled={!activeInstance}
+            title="Install or update the friendly 403 / 404 / 5xx pages on this instance"
+            className="px-3 py-1.5 rounded-sm text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700 disabled:opacity-40"
+          >
+            Error pages
           </button>
           <button
             onClick={handleValidate}

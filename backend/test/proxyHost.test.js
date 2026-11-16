@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateHost, fileNameFor, renderHostConf } from '../src/lib/proxyHost.js';
 
-const good = { subdomain: 'plex', upstreamApp: 'plex', upstreamPort: 32400, upstreamProto: 'http', authelia: false };
+const good = { subdomain: 'plex', upstreamApp: 'plex', upstreamPort: 32400, upstreamProto: 'http', authelia: false, errorPages: false };
 
 test('accepts a normal host and fills defaults', () => {
   assert.deepEqual(validateHost(good), good);
@@ -11,6 +11,7 @@ test('accepts a normal host and fills defaults', () => {
   assert.equal(d.upstreamPort, 8123);
   assert.equal(d.upstreamProto, 'http');
   assert.equal(d.authelia, true, 'Authelia is on unless switched off');
+  assert.equal(d.errorPages, true, 'error pages are on unless switched off');
 });
 
 test('builds the SWAG file name', () => {
@@ -49,6 +50,7 @@ test('rejects bad ports, protocols and toggles', () => {
     assert.throws(() => validateHost({ ...good, upstreamProto: p }), { field: 'upstreamProto' });
   }
   assert.throws(() => validateHost({ ...good, authelia: 'yes' }), { field: 'authelia' });
+  assert.throws(() => validateHost({ ...good, errorPages: 'on' }), { field: 'errorPages' });
   assert.throws(() => validateHost(null), { field: 'body' });
 });
 
@@ -68,4 +70,12 @@ test('renders a config with Authelia off (commented out)', () => {
   assert.match(conf, /^        #include \/config\/nginx\/authelia-location\.conf;$/m);
   assert.doesNotMatch(conf, /^\s+include \/config\/nginx\/authelia/m);
   assert.match(conf, /# Authelia: off\./);
+});
+
+test('includes the error-pages snippet only when switched on', () => {
+  const on = renderHostConf(validateHost({ ...good, errorPages: true }));
+  const off = renderHostConf(validateHost(good));
+  const line = /^    include \/config\/nginx\/proxy-confs\/errorpages\.conf;$/m;
+  assert.match(on, line);
+  assert.doesNotMatch(off, /errorpages/);
 });

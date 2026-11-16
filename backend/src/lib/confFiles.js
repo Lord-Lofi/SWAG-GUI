@@ -28,6 +28,18 @@ export async function write(confsPath, filename, content) {
   await writeFile(filePath, content, 'utf8');
 }
 
+// Writes a brand-new config file. Refuses if the file already exists, so a
+// new host can never overwrite an existing one.
+export async function create(confsPath, filename, content) {
+  const filePath = safePath(confsPath, filename);
+  await writeFile(filePath, content, { encoding: 'utf8', flag: 'wx' }).catch((err) => {
+    if (err.code === 'EEXIST') {
+      throw Object.assign(new Error(`${filename} already exists`), { status: 409 });
+    }
+    throw err;
+  });
+}
+
 export async function enableSample(confsPath, sampleName) {
   if (!sampleName.endsWith('.conf.sample')) {
     throw Object.assign(new Error('Target is not a .conf.sample file'), { status: 400 });

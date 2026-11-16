@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as confFiles from '../lib/confFiles.js';
 import * as docker from '../lib/docker.js';
+import { validateHost, fileNameFor, renderHostConf } from '../lib/proxyHost.js';
 
 const router = Router();
 
@@ -70,6 +71,37 @@ router.delete('/:id/confs/:name', async (req, res) => {
   const instance = getInstance(req.params.id);
   await confFiles.remove(instance.confsPath, req.params.name);
   res.json({ ok: true });
+});
+
+// POST /api/instances/:id/hosts/preview — shows the config a new host would
+// get, without writing anything
+router.post('/:id/hosts/preview', async (req, res) => {
+  getInstance(req.params.id);
+  const host = validateHost(req.body);
+  res.json({ name: fileNameFor(host.subdomain), content: renderHostConf(host) });
+});
+
+// POST /api/instances/:id/hosts — creates <subdomain>.subdomain.conf, then
+// runs nginx -t. If the test fails the new file is removed again, so a bad
+// host never stays behind. If it passes, nginx is reloaded.
+router.post('/:id/hosts', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  const host = validateHost(req.body);
+  const name = fileNameFor(host.subdomain);
+
+  await confFiles.create(instance.confsPath, name, renderHostConf(host));
+
+  const validation = await docker.nginxValidate(instance.container);
+  if (!validation.ok) {
+    await confFiles.remove(instance.confsPath, name);
+    return res.status(422).json({
+      error: `nginx -t failed, so ${name} was removed again`,
+      ...validation,
+    });
+  }
+
+  const reload = await docker.nginxReload(instance.container);
+  res.status(201).json({ ok: reload.ok, created: name, output: reload.output });
 });
 
 // POST /api/instances/:id/validate — runs nginx -t, returns pass/fail + output

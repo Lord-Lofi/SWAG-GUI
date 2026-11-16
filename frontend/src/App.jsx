@@ -3,6 +3,7 @@ import InstanceSwitcher from './components/InstanceSwitcher.jsx';
 import ConfList from './components/ConfList.jsx';
 import TemplateBrowser from './components/TemplateBrowser.jsx';
 import EditorModal from './components/EditorModal.jsx';
+import AddHostModal from './components/AddHostModal.jsx';
 import { api } from './api/client.js';
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
   const [editTarget, setEditTarget]     = useState(null);
   const [status, setStatus]             = useState(null);
   const [loading, setLoading]           = useState(false);
+  const [addingHost, setAddingHost]     = useState(false);
 
   useEffect(() => {
     api.instances.list().then(data => {
@@ -65,6 +67,17 @@ export default function App() {
   async function handleDelete(name) {
     await api.confs.remove(activeInstance, name);
     setStatus({ type: 'success', message: `Removed: ${name}` });
+    refreshConfs();
+  }
+
+  function handleHostCreated(result) {
+    setAddingHost(false);
+    setStatus({
+      type: result.ok ? 'success' : 'error',
+      message: result.ok
+        ? `Created ${result.created} and reloaded nginx.`
+        : `Created ${result.created}, but the reload failed:\n\n${result.output}`,
+    });
     refreshConfs();
   }
 
@@ -133,6 +146,13 @@ export default function App() {
         ))}
         <div className="ml-auto flex gap-2">
           <button
+            onClick={() => setAddingHost(true)}
+            disabled={!activeInstance}
+            className="px-3 py-1.5 rounded-sm text-xs bg-green-700 hover:bg-green-600 text-white transition-colors disabled:opacity-40"
+          >
+            + Add host
+          </button>
+          <button
             onClick={handleValidate}
             className="px-3 py-1.5 rounded-sm text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
           >
@@ -165,6 +185,15 @@ export default function App() {
           />
         )}
       </main>
+
+      {addingHost && (
+        <AddHostModal
+          instanceId={activeInstance}
+          instanceLabel={instances.find(i => i.id === activeInstance)?.label ?? activeInstance}
+          onCreated={handleHostCreated}
+          onClose={() => setAddingHost(false)}
+        />
+      )}
 
       {editTarget && (
         <EditorModal

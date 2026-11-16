@@ -8,6 +8,7 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 
 - **Proxy conf manager** — list, enable, disable, and edit active `.conf` files per instance
 - **Add proxy host** — a form for new `<name>.subdomain.conf` files (upstream, port, Authelia on/off) with a live preview; a failed `nginx -t` removes the new file again
+- **Friendly error pages** — matching 403 / 404 / service-down pages (no scripts, no outside requests); one click installs them, and new hosts include them by default
 - **Template browser** — browse Linuxserver.io's `.conf.sample` library and activate with one click
 - **Monaco editor** — syntax-highlighted in-browser conf editing
 - **Nginx validation gate** — every save runs `nginx -t` before reload; broken configs are blocked and the error is shown inline
@@ -120,6 +121,29 @@ docker compose up -d
 ```
 
 Also remove the old `watchtower` service from your `docker-compose.yml` if it is still there.
+
+---
+
+## Error pages
+
+**Error pages** (or a new host with "Use friendly error pages") installs into the selected instance's `proxy-confs`:
+
+- `errorpages/403.html`, `404.html`, `50x.html`: self-contained static pages that follow the visitor's dark or light setting
+- `errorpages.conf`: the nginx snippet. SWAG doesn't load it on its own; a config opts in with:
+  ```nginx
+  include /config/nginx/proxy-confs/errorpages.conf;
+  ```
+
+Only errors nginx itself produces are replaced (an upstream that is down, an allow-list denial). Apps' own error responses pass through unchanged, and the real status codes are kept.
+
+### Unknown subdomains
+
+Requests for a subdomain with no config fall through to SWAG's default site (`nginx/site-confs/default.conf`), which SWAG Config GUI doesn't manage. Recommended, once per instance:
+
+- **External SWAG:** drop them silently, so scanners learn nothing. In `default.conf`'s HTTPS `server` block, replace the `location / { ... }` contents with `return 444;`.
+- **Internal SWAG:** show the friendly 404 instead. Add `include /config/nginx/proxy-confs/errorpages.conf;` to that server block and replace the `location / { ... }` contents with `return 404;`.
+
+Check with **Validate** before reloading.
 
 ---
 

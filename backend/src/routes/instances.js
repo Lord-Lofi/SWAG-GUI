@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as confFiles from '../lib/confFiles.js';
 import * as docker from '../lib/docker.js';
 import { validateHost, fileNameFor, renderHostConf } from '../lib/proxyHost.js';
+import * as errorPages from '../lib/errorPages.js';
 
 const router = Router();
 
@@ -89,6 +90,11 @@ router.post('/:id/hosts', async (req, res) => {
   const host = validateHost(req.body);
   const name = fileNameFor(host.subdomain);
 
+  // A host that uses the error pages needs them installed first
+  if (host.errorPages && !(await errorPages.status(instance.confsPath)).installed) {
+    await errorPages.install(instance.confsPath);
+  }
+
   await confFiles.create(instance.confsPath, name, renderHostConf(host));
 
   const validation = await docker.nginxValidate(instance.container);
@@ -102,6 +108,21 @@ router.post('/:id/hosts', async (req, res) => {
 
   const reload = await docker.nginxReload(instance.container);
   res.status(201).json({ ok: reload.ok, created: name, output: reload.output });
+});
+
+// GET /api/instances/:id/errorpages — are the error pages installed and current?
+router.get('/:id/errorpages', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  res.json(await errorPages.status(instance.confsPath));
+});
+
+// POST /api/instances/:id/errorpages — install or update the error pages,
+// then check nginx still accepts its configuration
+router.post('/:id/errorpages', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  const result = await errorPages.install(instance.confsPath);
+  const validation = await docker.nginxValidate(instance.container);
+  res.status(validation.ok ? 200 : 422).json({ ...result, ...validation });
 });
 
 // POST /api/instances/:id/validate — runs nginx -t, returns pass/fail + output

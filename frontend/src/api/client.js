@@ -33,6 +33,10 @@ export const api = {
     preview: (id, host) => request('POST', `/instances/${id}/hosts/preview`, host),
     create:  (id, host) => request('POST', `/instances/${id}/hosts`, host),
   },
+  errorPages: {
+    status:  (id) => request('GET',  `/instances/${id}/errorpages`),
+    install: (id) => request('POST', `/instances/${id}/errorpages`),
+  },
   nginx: {
     validate: (id) => request('POST', `/instances/${id}/validate`),
     reload:   (id) => request('POST', `/instances/${id}/reload`),

@@ -15,6 +15,8 @@ const UPSTREAM_APP = /^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,252})$/;
 
 const PROTOCOLS = new Set(['http', 'https']);
 
+const ERROR_PAGES_INCLUDE = 'include /config/nginx/proxy-confs/errorpages.conf;';
+
 function invalid(field, message) {
   return Object.assign(new Error(`${field}: ${message}`), { status: 400, field });
 }
@@ -47,7 +49,10 @@ export function validateHost(input) {
   const authelia = input.authelia === undefined ? true : input.authelia;
   if (typeof authelia !== 'boolean') throw invalid('authelia', 'must be true or false');
 
-  return { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia };
+  const errorPages = input.errorPages === undefined ? true : input.errorPages;
+  if (typeof errorPages !== 'boolean') throw invalid('errorPages', 'must be true or false');
+
+  return { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia, errorPages };
 }
 
 export function fileNameFor(subdomain) {
@@ -57,7 +62,7 @@ export function fileNameFor(subdomain) {
 // Renders the config in the same layout as linuxserver.io's own
 // *.subdomain.conf.sample files.
 export function renderHostConf(host, now = new Date()) {
-  const { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia } = host;
+  const { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia, errorPages } = host;
   const date = now.toISOString().slice(0, 10).replace(/-/g, '/');
   // Disabled lines keep their indentation, like SWAG's samples: "    #include ..."
   const auth = (line) => (authelia ? line : line.replace(/^(\s*)/, '$1#'));
@@ -75,7 +80,7 @@ server {
     include /config/nginx/ssl.conf;
 
     client_max_body_size 0;
-
+${errorPages ? '\n    # Friendly error pages (service down, access denied)\n    ' + ERROR_PAGES_INCLUDE + '\n' : ''}
     ${authelia ? '# Authelia: sign-in required before reaching this service' : '# Authelia: off. Remove the # from both include lines below to turn it on.'}
 ${auth('    include /config/nginx/authelia-server.conf;')}
 

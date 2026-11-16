@@ -37,6 +37,9 @@ jobs:
       - name: Build the frontend
         run: npm run build
 
+      - name: Run backend tests
+        run: npm test --workspace=backend
+
       - name: Check the backend and entrypoint parse
         run: |
           for file in $(git ls-files 'backend/*.js' 'backend/**/*.js'); do

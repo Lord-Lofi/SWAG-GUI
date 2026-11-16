@@ -7,6 +7,7 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 ## Features
 
 - **Proxy conf manager** — list, enable, disable, and edit active `.conf` files per instance
+- **Add proxy host** — a form for new `<name>.subdomain.conf` files (upstream, port, Authelia on/off) with a live preview; a failed `nginx -t` removes the new file again
 - **Template browser** — browse Linuxserver.io's `.conf.sample` library and activate with one click
 - **Monaco editor** — syntax-highlighted in-browser conf editing
 - **Nginx validation gate** — every save runs `nginx -t` before reload; broken configs are blocked and the error is shown inline

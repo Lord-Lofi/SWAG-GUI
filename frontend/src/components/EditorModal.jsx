@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import CodeEditor from './CodeEditor.jsx';
 
+// Advanced: edit a config file by hand. Loaded only when opened (see App.jsx).
 export default function EditorModal({ name, content, onSave, onClose }) {
   const [value, setValue]   = useState(content);
   const [saving, setSaving] = useState(false);
@@ -37,8 +38,8 @@ export default function EditorModal({ name, content, onSave, onClose }) {
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-gray-700 shrink-0">
           <p className="text-xs text-gray-600">
-            Saving will run <span className="font-mono">nginx -t</span> before reload.
-            If validation fails, the reload is blocked and your file is preserved.
+            Advanced: editing by hand. Saving runs <span className="font-mono">nginx -t</span>; if it fails,
+            the file is put back as it was and your changes stay here to fix.
           </p>
           <div className="flex gap-2 shrink-0">
             <button

@@ -1,11 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import InstanceSwitcher from './components/InstanceSwitcher.jsx';
 import ConfList from './components/ConfList.jsx';
 import TemplateBrowser from './components/TemplateBrowser.jsx';
-import EditorModal from './components/EditorModal.jsx';
 import HostModal from './components/HostModal.jsx';
 import ActivateTemplateModal from './components/ActivateTemplateModal.jsx';
 import { api } from './api/client.js';
+
+// The editor (Monaco, several MB) only downloads when "Edit file" is used
+const EditorModal = lazy(() => import('./components/EditorModal.jsx'));
+
+// SWAG Config GUI's own snippet; managed with the "Error pages" button
+const OWN_FILES = new Set(['errorpages.conf']);
 
 export default function App() {
   const [instances, setInstances]       = useState([]);
@@ -37,33 +42,32 @@ export default function App() {
 
   useEffect(() => { refreshConfs(); }, [refreshConfs]);
 
-  // Hosts made with the form open in the form; everything else in the editor
+  // Edit: hosts made with the form open in the form
   async function handleEdit(name) {
-    const conf = confs.find(c => c.name === name);
-    if (conf?.managed) {
-      const { host } = await api.hosts.get(activeInstance, name);
-      setHostForm({ editName: name, initial: host });
-      return;
-    }
+    const { host } = await api.hosts.get(activeInstance, name);
+    setHostForm({ editName: name, initial: host });
+  }
+
+  // Advanced: edit file, in the editor
+  async function handleEditFile(name) {
     const { content } = await api.confs.read(activeInstance, name);
     setEditTarget({ name, content });
   }
 
+  // The server saves, runs nginx -t, and puts the old file back if it fails.
+  // On failure the editor stays open with your text, so you can fix it.
   async function handleSave(name, content) {
-    setStatus({ type: 'info', message: 'Writing file...' });
-    await api.confs.write(activeInstance, name, content);
-
-    setStatus({ type: 'info', message: 'Validating (nginx -t)...' });
-    const validation = await api.nginx.validate(activeInstance);
-
-    if (!validation.ok) {
-      setStatus({ type: 'error', message: `nginx -t failed — reload blocked:\n\n${validation.output}` });
-      return;
+    setStatus({ type: 'info', message: `Saving ${name} and running nginx -t...` });
+    try {
+      const r = await api.confs.write(activeInstance, name, content);
+      setStatus({
+        type: r.ok ? 'success' : 'error',
+        message: r.ok ? `Saved ${name} and reloaded nginx.` : `Saved, but the reload failed:\n\n${r.output}`,
+      });
+      setEditTarget(null);
+    } catch (err) {
+      setStatus({ type: 'error', message: `${err.message}${err.data?.output ? `\n\n${err.data.output}` : ''}` });
     }
-
-    await api.nginx.reload(activeInstance);
-    setStatus({ type: 'success', message: `Saved and reloaded. nginx -t: OK` });
-    setEditTarget(null);
     refreshConfs();
   }
 
@@ -228,8 +232,9 @@ export default function App() {
           <p className="text-gray-600 text-sm mt-4">Loading...</p>
         ) : view === 'confs' ? (
           <ConfList
-            confs={confs.filter(c => !c.isSample)}
+            confs={confs.filter(c => !c.isSample && !OWN_FILES.has(c.name))}
             onEdit={handleEdit}
+            onEditFile={handleEditFile}
             onDelete={handleDelete}
             onToggle={handleToggle}
           />
@@ -264,12 +269,14 @@ export default function App() {
       )}
 
       {editTarget && (
-        <EditorModal
-          name={editTarget.name}
-          content={editTarget.content}
-          onSave={handleSave}
-          onClose={() => setEditTarget(null)}
-        />
+        <Suspense fallback={<div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 text-sm text-gray-400">Loading editor…</div>}>
+          <EditorModal
+            name={editTarget.name}
+            content={editTarget.content}
+            onSave={handleSave}
+            onClose={() => setEditTarget(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

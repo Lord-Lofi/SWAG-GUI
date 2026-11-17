@@ -133,11 +133,22 @@ router.get('/:id/confs/:name', async (req, res) => {
   res.json({ content });
 });
 
-// PUT /api/instances/:id/confs/:name
+// PUT /api/instances/:id/confs/:name — the editor (Advanced: edit file)
+// Saves a file from the editor, then runs nginx -t. If the test fails the
+// file is put back as it was (the editor keeps the new text to fix), so a
+// broken file never stays on disk to break SWAG's next restart.
 router.put('/:id/confs/:name', async (req, res) => {
   const instance = getInstance(req.params.id);
-  await confFiles.write(instance.confsPath, req.params.name, req.body.content);
-  res.json({ ok: true });
+  const name = req.params.name;
+  if (templates.isTemplate(name)) {
+    throw Object.assign(new Error('Templates are read-only; activate one to get an editable copy'), { status: 400 });
+  }
+  if (typeof req.body?.content !== 'string') {
+    throw Object.assign(new Error('content must be a string'), { status: 400 });
+  }
+  const previous = await confFiles.read(instance.confsPath, name);
+  const result = await saveAndReload(instance, name, req.body.content, previous);
+  res.status(result.status).json(result.body);
 });
 
 // DELETE /api/instances/:id/confs/:name

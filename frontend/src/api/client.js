@@ -27,6 +27,7 @@ export const api = {
     read:   (id, name)        => request('GET',    `/instances/${id}/confs/${encodeURIComponent(name)}`),
     write:  (id, name, content) => request('PUT',  `/instances/${id}/confs/${encodeURIComponent(name)}`, { content }),
     remove: (id, name)        => request('DELETE', `/instances/${id}/confs/${encodeURIComponent(name)}`),
+    setFeatures: (id, name, changes) => request('PATCH', `/instances/${id}/confs/${encodeURIComponent(name)}/features`, changes),
   },
   hosts: {
     preview: (id, host) => request('POST', `/instances/${id}/hosts/preview`, host),

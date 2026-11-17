@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as confFiles from '../lib/confFiles.js';
 import * as docker from '../lib/docker.js';
-import { validateHost, fileNameFor, renderHostConf } from '../lib/proxyHost.js';
+import { validateHost, fileNameFor, renderHostConf, parseHostConf } from '../lib/proxyHost.js';
 import * as errorPages from '../lib/errorPages.js';
 import * as templates from '../lib/templates.js';
 
@@ -73,9 +73,16 @@ router.get('/', (_req, res) => {
 });
 
 // GET /api/instances/:id/confs
+// "managed" marks hosts made with the form and not changed by hand since:
+// those can be edited with the form again.
 router.get('/:id/confs', async (req, res) => {
   const instance = getInstance(req.params.id);
-  res.json(await confFiles.list(instance.confsPath));
+  const confs = await confFiles.list(instance.confsPath);
+  for (const conf of confs) {
+    conf.managed = conf.name.endsWith('.subdomain.conf')
+      && parseHostConf(await confFiles.read(instance.confsPath, conf.name)) !== null;
+  }
+  res.json(confs);
 });
 
 // GET /api/instances/:id/confs/:name
@@ -122,6 +129,45 @@ router.post('/:id/hosts', async (req, res) => {
 
   const result = await saveAndReload(instance, name, renderHostConf(host));
   res.status(result.status).json({ ...result.body, created: name });
+});
+
+// Reads a host made with the form, or refuses if it was changed by hand
+async function loadManagedHost(instance, name) {
+  const content = await confFiles.read(instance.confsPath, name);
+  const host = parseHostConf(content);
+  if (!host || fileNameFor(host.subdomain) !== name) {
+    throw Object.assign(
+      new Error(`${name} was not made with the form, or was changed by hand. Edit it in the editor instead.`),
+      { status: 409 }
+    );
+  }
+  return { host, content };
+}
+
+// GET /api/instances/:id/hosts/:name — the form values of an existing host
+router.get('/:id/hosts/:name', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  const { host } = await loadManagedHost(instance, req.params.name);
+  res.json({ name: req.params.name, host });
+});
+
+// PUT /api/instances/:id/hosts/:name — saves form changes to an existing
+// host. The subdomain can't change (that would be a different file). If
+// nginx -t fails, the file gets its old content back.
+router.put('/:id/hosts/:name', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  const { content: previous } = await loadManagedHost(instance, req.params.name);
+  const host = validateHost(req.body);
+  if (fileNameFor(host.subdomain) !== req.params.name) {
+    throw Object.assign(new Error('subdomain: the subdomain of an existing host can\'t be changed'), { status: 400, field: 'subdomain' });
+  }
+
+  if (host.errorPages && !(await errorPages.status(instance.confsPath)).installed) {
+    await errorPages.install(instance.confsPath);
+  }
+
+  const result = await saveAndReload(instance, req.params.name, renderHostConf(host), previous);
+  res.status(result.status).json({ ...result.body, updated: req.params.name });
 });
 
 // GET /api/instances/:id/templates/:name — what the activation form can

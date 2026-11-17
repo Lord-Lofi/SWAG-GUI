@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateHost, fileNameFor, renderHostConf } from '../src/lib/proxyHost.js';
+import { validateHost, fileNameFor, renderHostConf, parseHostConf } from '../src/lib/proxyHost.js';
 
 const good = { subdomain: 'plex', upstreamApp: 'plex', upstreamPort: 32400, upstreamProto: 'http', authelia: false, errorPages: false };
 
@@ -78,4 +78,22 @@ test('includes the error-pages snippet only when switched on', () => {
   const line = /^    include \/config\/nginx\/proxy-confs\/errorpages\.conf;$/m;
   assert.match(on, line);
   assert.doesNotMatch(off, /errorpages/);
+});
+
+test('reads every form option back from a generated host', () => {
+  for (const authelia of [true, false]) {
+    for (const errorPages of [true, false]) {
+      const host = { ...good, upstreamProto: 'https', authelia, errorPages };
+      assert.deepEqual(parseHostConf(renderHostConf(host, new Date('2026-01-02T12:00:00Z'))), host);
+    }
+  }
+});
+
+test('refuses files changed by hand or not made by the form', () => {
+  const conf = renderHostConf(good);
+  assert.equal(parseHostConf(conf.replace('client_max_body_size 0;', 'client_max_body_size 0;\n    add_header X-Test 1;')), null);
+  assert.equal(parseHostConf(conf.replace('# Created by SWAG Config GUI\n', '')), null);
+  assert.equal(parseHostConf(conf + '\n'), null);
+  assert.equal(parseHostConf('server { }'), null);
+  assert.equal(parseHostConf(undefined), null);
 });

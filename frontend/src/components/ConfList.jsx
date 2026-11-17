@@ -14,7 +14,12 @@ export default function ConfList({ confs, onEdit, onDelete }) {
           key={conf.name}
           className="flex items-center justify-between px-4 py-3 hover:bg-gray-900 transition-colors"
         >
-          <span className="font-mono text-sm text-gray-200">{conf.name}</span>
+          <span className="font-mono text-sm text-gray-200">
+            {conf.name}
+            {conf.managed && (
+              <span title="Made with the form; Edit opens the form" className="ml-2 font-sans text-[10px] uppercase tracking-wide text-blue-300/70">form</span>
+            )}
+          </span>
           <div className="flex gap-2">
             <button
               onClick={() => onEdit(conf.name)}

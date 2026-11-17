@@ -7,7 +7,8 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 ## Features
 
 - **Proxy conf manager** — list, enable, disable, and edit active `.conf` files per instance
-- **Add and edit proxy hosts** — a form for `<name>.subdomain.conf` files (upstream, port, Authelia on/off) with a live preview. Hosts made with the form open in the form again for changes, as long as nobody edited the file by hand. A failed `nginx -t` undoes the change
+- **Add and edit proxy hosts** — a form for `<name>.subdomain.conf` files (upstream, port, Authelia on/off, allow list) with a live preview. Hosts made with the form open in the form again for changes, as long as nobody edited the file by hand. A failed `nginx -t` undoes the change
+- **Allow lists** — limit a host to your local network or to a list of IP addresses and ranges; everyone else gets a 403 (with the friendly page if error pages are on)
 - **Friendly error pages** — matching 403 / 404 / service-down pages (no scripts, no outside requests); one click installs them, and new hosts include them by default
 - **Template browser** — browse Linuxserver.io's `.conf.sample` library; activating one asks for the container name, port and subdomain (filled in with the template's defaults) and shows the resulting file first
 - **Monaco editor** — in-browser conf editing with nginx syntax highlighting
@@ -156,6 +157,17 @@ Requests for a subdomain with no config fall through to SWAG's default site (`ng
 - **Internal SWAG:** show the friendly 404 instead. Add `include /config/nginx/proxy-confs/errorpages.conf;` to that server block and replace the `location / { ... }` contents with `return 404;`.
 
 Check with **Validate** before reloading.
+
+---
+
+## Allow lists
+
+A host's **Who can connect** setting adds `allow` lines and `deny all;` to its server block. Everyone else gets a 403, shown with the friendly page when error pages are on. (The error-pages snippet has its own `allow all;`, so blocked visitors can still see that page. If you installed the error pages before allow lists existed, press **Error pages** once to update them; saving a host with error pages on also updates them.)
+
+The check uses the address nginx sees, so make sure that is the visitor's real address:
+
+- **Behind Cloudflare or another proxy:** nginx sees the proxy's address unless SWAG's real-IP settings are configured. Until then, "Local network only" blocks everyone and a custom list matches the proxy, not the visitor.
+- **Docker networking:** with Docker's default iptables port publishing, SWAG sees real client addresses. If your setup shows a Docker gateway address (172.x) for outside visitors instead, "Local network only" would let everyone in, because 172.16.0.0/12 is a private range. Check SWAG's access log for the addresses it records before relying on an allow list.
 
 ---
 

@@ -5,6 +5,8 @@
 // semicolons, braces or newlines, which means form input can never add extra
 // nginx directives (configuration injection).
 
+import { isIP } from 'node:net';
+
 // One DNS label: lowercase letters, digits and hyphens, no leading or
 // trailing hyphen, at most 63 characters (e.g. "plex", "home-assistant").
 const SUBDOMAIN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -14,6 +16,9 @@ const SUBDOMAIN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const UPSTREAM_APP = /^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,252})$/;
 
 const PROTOCOLS = new Set(['http', 'https']);
+
+// Allow lists: at most this many addresses or ranges per host
+const MAX_ALLOW = 50;
 
 const ERROR_PAGES_INCLUDE = 'include /config/nginx/proxy-confs/errorpages.conf;';
 
@@ -66,7 +71,35 @@ export function validateHost(input) {
   const errorPages = input.errorPages === undefined ? true : input.errorPages;
   if (typeof errorPages !== 'boolean') throw invalid('errorPages', 'must be true or false');
 
-  return { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia, errorPages };
+  const allowList = validateAllowList(input.allowList);
+
+  return { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia, errorPages, allowList };
+}
+
+// An allow list is a list of IPv4/IPv6 addresses or CIDR ranges
+// ("192.168.1.20", "192.168.0.0/16", "fd00::/8"). Empty means anyone may
+// connect. node:net's isIP does the address check, so nothing but a valid
+// address and prefix length can reach the config.
+export function validateAllowList(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw invalid('allowList', 'must be a list of addresses');
+  const list = [];
+  for (const raw of value) {
+    const entry = typeof raw === 'string' ? raw.trim() : '';
+    if (entry === '') continue;
+    // Digits, hex letters, dots, colons and one slash only (this also rules
+    // out IPv6 zone names like "fe80::1%eth0", which isIP would accept)
+    const [addr, prefix, extra] = /^[0-9A-Fa-f:.\/]+$/.test(entry) ? entry.split('/') : [''];
+    const version = isIP(addr);
+    const maxPrefix = version === 6 ? 128 : 32;
+    const prefixOk = prefix === undefined || (/^\d{1,3}$/.test(prefix) && Number(prefix) <= maxPrefix);
+    if (!version || !prefixOk || extra !== undefined) {
+      throw invalid('allowList', `"${entry.slice(0, 50)}" is not an IP address or range (e.g. 192.168.1.0/24)`);
+    }
+    if (!list.includes(entry)) list.push(entry);
+  }
+  if (list.length > MAX_ALLOW) throw invalid('allowList', `use at most ${MAX_ALLOW} entries`);
+  return list;
 }
 
 export function fileNameFor(subdomain) {
@@ -76,7 +109,7 @@ export function fileNameFor(subdomain) {
 // Renders the config in the same layout as linuxserver.io's own
 // *.subdomain.conf.sample files.
 export function renderHostConf(host, now = new Date()) {
-  const { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia, errorPages } = host;
+  const { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia, errorPages, allowList = [] } = host;
   const date = now.toISOString().slice(0, 10).replace(/-/g, '/');
   // Disabled lines keep their indentation, like SWAG's samples: "    #include ..."
   const auth = (line) => (authelia ? line : line.replace(/^(\s*)/, '$1#'));
@@ -94,7 +127,7 @@ server {
     include /config/nginx/ssl.conf;
 
     client_max_body_size 0;
-${errorPages ? '\n    # Friendly error pages (service down, access denied)\n    ' + ERROR_PAGES_INCLUDE + '\n' : ''}
+${errorPages ? '\n    # Friendly error pages (service down, access denied)\n    ' + ERROR_PAGES_INCLUDE + '\n' : ''}${allowList.length ? '\n    # Allow list: only these addresses may connect; everyone else gets 403\n' + allowList.map((a) => `    allow ${a};\n`).join('') + '    deny all;\n' : ''}
     ${authelia ? '# Authelia: sign-in required before reaching this service' : '# Authelia: off. Remove the # from both include lines below to turn it on.'}
 ${auth('    include /config/nginx/authelia-server.conf;')}
 
@@ -130,6 +163,7 @@ export function parseHostConf(content) {
     upstreamProto: pick(/^\s*set \$upstream_proto (\S+);$/m),
     authelia: /^\s*include \/config\/nginx\/authelia-server\.conf;$/m.test(content),
     errorPages: content.includes(`    ${ERROR_PAGES_INCLUDE}\n`),
+    allowList: [...content.matchAll(/^    allow (\S+);$/gm)].map((m) => m[1]),
   };
   if (!date || !values.subdomain) return null;
 

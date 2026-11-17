@@ -3,7 +3,7 @@ import { api } from '../api/client.js';
 
 const EMPTY = {
   subdomain: '', upstreamApp: '', upstreamPort: '', upstreamProto: 'http',
-  authelia: true, errorPages: true, access: 'anyone', allowText: '',
+  auth: 'authelia', errorPages: true, access: 'anyone', allowText: '',
 };
 
 // "Local network only": private IPv4 ranges, IPv6 unique-local, and loopback
@@ -110,13 +110,15 @@ export default function HostModal({ instanceId, instanceLabel, editName, initial
                 <input id="upstreamPort" className={input} placeholder="32400" inputMode="numeric" value={form.upstreamPort} onChange={set('upstreamPort')} />
               </div>
             </div>
-            <label className="flex items-start gap-2 text-sm text-gray-300 mt-1">
-              <input type="checkbox" className="mt-1" checked={form.authelia} onChange={set('authelia')} />
-              <span>
-                Require Authelia sign-in
-                <span className="block text-[11px] text-gray-600">Turn off only for apps with their own login (e.g. Plex).</span>
-              </span>
-            </label>
+            <div className="mt-1">
+              <label className={label} htmlFor="auth">Sign-in required</label>
+              <select id="auth" className={input} value={form.auth} onChange={set('auth')}>
+                <option value="authelia">Authelia</option>
+                <option value="authentik">Authentik</option>
+                <option value="none">None</option>
+              </select>
+              <p className="text-[11px] text-gray-600 mt-1">Turn off only for apps with their own login (e.g. Plex). Authentik needs SWAG's authentik-server.conf pointed at your Authentik server.</p>
+            </div>
             <label className="flex items-start gap-2 text-sm text-gray-300">
               <input type="checkbox" className="mt-1" checked={form.errorPages} onChange={set('errorPages')} />
               <span>

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as confFiles from '../lib/confFiles.js';
 import * as docker from '../lib/docker.js';
-import { validateHost, fileNameFor, renderHostConf, parseHostConf } from '../lib/proxyHost.js';
+import { validateHost, fileNameFor, renderHostConf, parseHostConf, AUTH_PROVIDERS } from '../lib/proxyHost.js';
 import * as errorPages from '../lib/errorPages.js';
 import * as templates from '../lib/templates.js';
 import * as features from '../lib/features.js';
@@ -77,7 +77,8 @@ router.get('/', (_req, res) => {
 // For active configs:
 //   managed   made with the form and not changed by hand since, so the form
 //             can edit it again
-//   features  the Authelia and error-page switches (null: not available)
+//   features  the sign-in (Authelia / Authentik) and error-page settings
+//             (null: not available)
 router.get('/:id/confs', async (req, res) => {
   const instance = getInstance(req.params.id);
   const confs = await confFiles.list(instance.confsPath);
@@ -86,13 +87,16 @@ router.get('/:id/confs', async (req, res) => {
     const content = await confFiles.read(instance.confsPath, conf.name);
     conf.managed = conf.name.endsWith('.subdomain.conf') && parseHostConf(content) !== null;
     conf.features = features.detect(content);
+    // The form can write either provider's lines into its own hosts
+    if (conf.managed) conf.features.authOptions = AUTH_PROVIDERS;
   }
   res.json(confs);
 });
 
-// PATCH /api/instances/:id/confs/:name/features — switches Authelia and/or
-// the error pages on or off, e.g. { "authelia": true }. Only those lines
-// change; a failed nginx -t puts the file back as it was.
+// PATCH /api/instances/:id/confs/:name/features — changes the sign-in
+// and/or switches the error pages, e.g. { "auth": "authentik" } or
+// { "errorPages": false }. Only those lines change; a failed nginx -t puts
+// the file back as it was.
 router.patch('/:id/confs/:name/features', async (req, res) => {
   const instance = getInstance(req.params.id);
   const name = req.params.name;
@@ -100,20 +104,16 @@ router.patch('/:id/confs/:name/features', async (req, res) => {
     throw Object.assign(new Error('Templates are switched on with Activate'), { status: 400 });
   }
   const previous = await confFiles.read(instance.confsPath, name);
-  const changes = { authelia: req.body?.authelia, errorPages: req.body?.errorPages };
+  const changes = { auth: req.body?.auth, errorPages: req.body?.errorPages };
 
   // Form-made hosts are rendered again, so the form can still edit them
   const host = parseHostConf(previous);
   let content;
   if (host && fileNameFor(host.subdomain) === name) {
     for (const key of Object.keys(changes)) {
-      if (changes[key] === undefined) continue;
-      if (typeof changes[key] !== 'boolean') {
-        throw Object.assign(new Error(`${key}: must be true or false`), { status: 400, field: key });
-      }
-      host[key] = changes[key];
+      if (changes[key] !== undefined) host[key] = changes[key];
     }
-    content = renderHostConf(host);
+    content = renderHostConf(validateHost(host));
   } else {
     content = features.apply(previous, changes);
   }
@@ -252,13 +252,13 @@ router.post('/:id/templates/:name/activate', async (req, res) => {
   res.status(result.status).json({ ...result.body, created: name });
 });
 
-// The template with the form values and the Authelia / error-page switches
-// applied (switches the template has no place for are left out)
+// The template with the form values and the sign-in / error-page settings
+// applied (settings the template has no place for are left out)
 function renderTemplate(content, info, values, body = {}) {
   const filled = templates.apply(content, info, values);
   const available = features.detect(filled);
   const changes = {};
-  for (const key of ['authelia', 'errorPages']) {
+  for (const key of ['auth', 'errorPages']) {
     if (body[key] !== undefined && available[key] !== null) changes[key] = body[key];
   }
   return features.apply(filled, changes);

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateHost, fileNameFor, renderHostConf, parseHostConf } from '../src/lib/proxyHost.js';
 
-const good = { subdomain: 'plex', upstreamApp: 'plex', upstreamPort: 32400, upstreamProto: 'http', authelia: false, errorPages: false, allowList: [] };
+const good = { subdomain: 'plex', upstreamApp: 'plex', upstreamPort: 32400, upstreamProto: 'http', auth: 'none', errorPages: false, allowList: [] };
 
 test('accepts a normal host and fills defaults', () => {
   assert.deepEqual(validateHost(good), good);
@@ -10,7 +10,7 @@ test('accepts a normal host and fills defaults', () => {
   assert.equal(d.subdomain, 'home-assistant');
   assert.equal(d.upstreamPort, 8123);
   assert.equal(d.upstreamProto, 'http');
-  assert.equal(d.authelia, true, 'Authelia is on unless switched off');
+  assert.equal(d.auth, 'authelia', 'Authelia is the default sign-in');
   assert.equal(d.errorPages, true, 'error pages are on unless switched off');
 });
 
@@ -49,13 +49,17 @@ test('rejects bad ports, protocols and toggles', () => {
   for (const p of ['ftp', 'HTTP', 'http;', '']) {
     assert.throws(() => validateHost({ ...good, upstreamProto: p }), { field: 'upstreamProto' });
   }
-  assert.throws(() => validateHost({ ...good, authelia: 'yes' }), { field: 'authelia' });
+  for (const a of ['Authentik', 'ldap', 'none;', true, '']) {
+    assert.throws(() => validateHost({ ...good, auth: a }), { field: 'auth' });
+  }
+  const { auth: _omit, ...legacy } = good;
+  assert.throws(() => validateHost({ ...legacy, authelia: 'yes' }), { field: 'authelia' });
   assert.throws(() => validateHost({ ...good, errorPages: 'on' }), { field: 'errorPages' });
   assert.throws(() => validateHost(null), { field: 'body' });
 });
 
 test('renders a config with Authelia on', () => {
-  const conf = renderHostConf(validateHost({ ...good, authelia: true }), new Date('2026-11-16T00:00:00Z'));
+  const conf = renderHostConf(validateHost({ ...good, auth: 'authelia' }), new Date('2026-11-16T00:00:00Z'));
   assert.match(conf, /^## Version 2026\/11\/16$/m);
   assert.match(conf, /^    server_name plex\.\*;$/m);
   assert.match(conf, /^    include \/config\/nginx\/authelia-server\.conf;$/m);
@@ -64,7 +68,21 @@ test('renders a config with Authelia on', () => {
   assert.equal((conf.match(/{/g) || []).length, (conf.match(/}/g) || []).length, 'balanced braces');
 });
 
-test('renders a config with Authelia off (commented out)', () => {
+test('renders a config with Authentik on', () => {
+  const conf = renderHostConf(validateHost({ ...good, auth: 'authentik' }));
+  assert.match(conf, /^    include \/config\/nginx\/authentik-server\.conf;$/m);
+  assert.match(conf, /^        include \/config\/nginx\/authentik-location\.conf;$/m);
+  assert.match(conf, /# Authentik: sign-in required/);
+  assert.doesNotMatch(conf, /authelia/, 'only one provider');
+});
+
+test('older clients sending authelia: true/false still work', () => {
+  const { auth: _omit, ...legacy } = good;
+  assert.equal(validateHost({ ...legacy, authelia: true }).auth, 'authelia');
+  assert.equal(validateHost({ ...legacy, authelia: false }).auth, 'none');
+});
+
+test('renders a config with no sign-in (Authelia lines commented out)', () => {
   const conf = renderHostConf(validateHost(good));
   assert.match(conf, /^    #include \/config\/nginx\/authelia-server\.conf;$/m);
   assert.match(conf, /^        #include \/config\/nginx\/authelia-location\.conf;$/m);
@@ -81,9 +99,9 @@ test('includes the error-pages snippet only when switched on', () => {
 });
 
 test('reads every form option back from a generated host', () => {
-  for (const authelia of [true, false]) {
+  for (const auth of ['authelia', 'authentik', 'none']) {
     for (const errorPages of [true, false]) {
-      const host = { ...good, upstreamProto: 'https', authelia, errorPages };
+      const host = { ...good, upstreamProto: 'https', auth, errorPages };
       assert.deepEqual(parseHostConf(renderHostConf(host, new Date('2026-01-02T12:00:00Z'))), host);
     }
   }

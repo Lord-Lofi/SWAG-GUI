@@ -17,6 +17,11 @@ const UPSTREAM_APP = /^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,252})$/;
 
 const PROTOCOLS = new Set(['http', 'https']);
 
+// Sign-in in front of a host: SWAG ships include files for both Authelia and
+// Authentik (/config/nginx/authelia-*.conf and authentik-*.conf)
+export const AUTH_PROVIDERS = ['authelia', 'authentik'];
+const AUTH_CHOICES = new Set(['none', ...AUTH_PROVIDERS]);
+
 // Allow lists: at most this many addresses or ranges per host
 const MAX_ALLOW = 50;
 
@@ -65,15 +70,23 @@ export function validateHost(input) {
   const subdomain = validateSubdomain(input.subdomain);
   const { upstreamApp, upstreamPort, upstreamProto } = validateUpstream(input);
 
-  const authelia = input.authelia === undefined ? true : input.authelia;
-  if (typeof authelia !== 'boolean') throw invalid('authelia', 'must be true or false');
+  // "auth" is 'authelia', 'authentik' or 'none'. Older clients sent
+  // authelia: true/false, which still works. Default: Authelia.
+  let auth = input.auth;
+  if (auth === undefined) {
+    if (input.authelia !== undefined && typeof input.authelia !== 'boolean') {
+      throw invalid('authelia', 'must be true or false');
+    }
+    auth = input.authelia === false ? 'none' : 'authelia';
+  }
+  if (!AUTH_CHOICES.has(auth)) throw invalid('auth', 'use authelia, authentik or none');
 
   const errorPages = input.errorPages === undefined ? true : input.errorPages;
   if (typeof errorPages !== 'boolean') throw invalid('errorPages', 'must be true or false');
 
   const allowList = validateAllowList(input.allowList);
 
-  return { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia, errorPages, allowList };
+  return { subdomain, upstreamApp, upstreamPort, upstreamProto, auth, errorPages, allowList };
 }
 
 // An allow list is a list of IPv4/IPv6 addresses or CIDR ranges
@@ -109,10 +122,13 @@ export function fileNameFor(subdomain) {
 // Renders the config in the same layout as linuxserver.io's own
 // *.subdomain.conf.sample files.
 export function renderHostConf(host, now = new Date()) {
-  const { subdomain, upstreamApp, upstreamPort, upstreamProto, authelia, errorPages, allowList = [] } = host;
+  const { subdomain, upstreamApp, upstreamPort, upstreamProto, auth: signIn, errorPages, allowList = [] } = host;
+  // With no sign-in, the Authelia lines are written commented out, as before
+  const provider = signIn === 'authentik' ? 'authentik' : 'authelia';
+  const name = provider === 'authentik' ? 'Authentik' : 'Authelia';
   const date = now.toISOString().slice(0, 10).replace(/-/g, '/');
   // Disabled lines keep their indentation, like SWAG's samples: "    #include ..."
-  const auth = (line) => (authelia ? line : line.replace(/^(\s*)/, '$1#'));
+  const toggle = (line) => (signIn !== 'none' ? line : line.replace(/^(\s*)/, '$1#'));
 
   return `## Version ${date}
 # Created by SWAG Config GUI
@@ -128,11 +144,11 @@ server {
 
     client_max_body_size 0;
 ${errorPages ? '\n    # Friendly error pages (service down, access denied)\n    ' + ERROR_PAGES_INCLUDE + '\n' : ''}${allowList.length ? '\n    # Allow list: only these addresses may connect; everyone else gets 403\n' + allowList.map((a) => `    allow ${a};\n`).join('') + '    deny all;\n' : ''}
-    ${authelia ? '# Authelia: sign-in required before reaching this service' : '# Authelia: off. Remove the # from both include lines below to turn it on.'}
-${auth('    include /config/nginx/authelia-server.conf;')}
+    ${signIn !== 'none' ? `# ${name}: sign-in required before reaching this service` : '# Authelia: off. Remove the # from both include lines below to turn it on.'}
+${toggle(`    include /config/nginx/${provider}-server.conf;`)}
 
     location / {
-${auth('        include /config/nginx/authelia-location.conf;')}
+${toggle(`        include /config/nginx/${provider}-location.conf;`)}
 
         include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
@@ -161,7 +177,7 @@ export function parseHostConf(content) {
     upstreamApp: pick(/^\s*set \$upstream_app (\S+);$/m),
     upstreamPort: pick(/^\s*set \$upstream_port (\d+);$/m),
     upstreamProto: pick(/^\s*set \$upstream_proto (\S+);$/m),
-    authelia: /^\s*include \/config\/nginx\/authelia-server\.conf;$/m.test(content),
+    auth: content.match(/^\s*include \/config\/nginx\/(authelia|authentik)-server\.conf;$/m)?.[1] ?? 'none',
     errorPages: content.includes(`    ${ERROR_PAGES_INCLUDE}\n`),
     allowList: [...content.matchAll(/^    allow (\S+);$/gm)].map((m) => m[1]),
   };

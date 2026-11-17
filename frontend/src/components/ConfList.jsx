@@ -1,11 +1,32 @@
-// Active configs. Each row has switches for Authelia and the friendly error
-// pages (greyed out when the file has no place for them). Hosts made with
+// Active configs. Each row has a sign-in choice (Authelia, Authentik or
+// none) and an error-pages switch, greyed out when the file has no place
+// for them. Hosts made with
 // the form have Edit, which reopens the form; "Edit file" is the advanced
 // option for changing any file by hand.
-const SWITCHES = [
-  { key: 'authelia', label: 'Authelia', none: 'This config has no Authelia include lines' },
-  { key: 'errorPages', label: 'Error pages', none: 'Subfolder configs use the error pages of the site they belong to' },
-];
+const PROVIDER_NAMES = { authelia: 'Authelia', authentik: 'Authentik' };
+
+// Sign-in for one config. Only offers the providers the file has lines for.
+function SignIn({ features, onChange }) {
+  const state = features?.auth;
+  if (state === null || state === undefined) {
+    return <span title="This config has no Authelia or Authentik include lines" className="text-xs text-gray-600 w-32">No sign-in lines</span>;
+  }
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-gray-400">
+      Sign-in
+      <select
+        value={state}
+        onChange={(e) => onChange(e.target.value)}
+        title={state === 'mixed' ? 'Only some sign-in lines are switched on. Pick one to fix it.' : 'Which sign-in is required for this config'}
+        className={`rounded-sm bg-gray-950 border px-1.5 py-0.5 text-xs ${state === 'mixed' ? 'border-amber-700 text-amber-300' : 'border-gray-700 text-gray-200'}`}
+      >
+        {state === 'mixed' && <option value="mixed" disabled>Mixed</option>}
+        {features.authOptions.map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
+        <option value="none">None</option>
+      </select>
+    </label>
+  );
+}
 
 function Switch({ label, state, title, onChange }) {
   const disabled = state === null || state === undefined;
@@ -13,21 +34,21 @@ function Switch({ label, state, title, onChange }) {
   return (
     <button
       role="switch"
-      aria-checked={state === 'mixed' ? 'mixed' : on}
+      aria-checked={on}
       disabled={disabled}
       title={title}
       onClick={() => onChange(!on)}
       className="flex items-center gap-1.5 text-xs text-gray-400 disabled:opacity-30 enabled:hover:text-gray-200"
     >
-      <span className={`relative inline-block w-7 h-4 rounded-full transition-colors ${on ? 'bg-blue-600' : state === 'mixed' ? 'bg-amber-700' : 'bg-gray-700'}`}>
-        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? 'left-3.5' : state === 'mixed' ? 'left-2' : 'left-0.5'}`} />
+      <span className={`relative inline-block w-7 h-4 rounded-full transition-colors ${on ? 'bg-blue-600' : 'bg-gray-700'}`}>
+        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? 'left-3.5' : 'left-0.5'}`} />
       </span>
       {label}
     </button>
   );
 }
 
-export default function ConfList({ confs, onEdit, onEditFile, onDelete, onToggle }) {
+export default function ConfList({ confs, onEdit, onEditFile, onDelete, onSetting }) {
   if (confs.length === 0) {
     return (
       <p className="text-gray-600 text-sm mt-6 text-center">
@@ -50,15 +71,15 @@ export default function ConfList({ confs, onEdit, onEditFile, onDelete, onToggle
             )}
           </span>
           <div className="flex items-center gap-4">
-            {SWITCHES.map(({ key, label, none }) => {
-              const state = conf.features?.[key];
-              const title = state === null ? none
-                : state === 'mixed' ? `${label}: only some lines are switched on. Click to switch all on.`
-                : `${label}: ${state ? 'on' : 'off'}. Click to switch ${state ? 'off' : 'on'}.`;
-              return (
-                <Switch key={key} label={label} state={state} title={title} onChange={(value) => onToggle(conf.name, key, value)} />
-              );
-            })}
+            <SignIn features={conf.features} onChange={(value) => onSetting(conf.name, 'auth', value)} />
+            <Switch
+              label="Error pages"
+              state={conf.features?.errorPages}
+              title={conf.features?.errorPages === null
+                ? 'Subfolder configs use the error pages of the site they belong to'
+                : `Error pages: ${conf.features?.errorPages ? 'on' : 'off'}. Click to switch ${conf.features?.errorPages ? 'off' : 'on'}.`}
+              onChange={(value) => onSetting(conf.name, 'errorPages', value)}
+            />
             <div className="flex items-center gap-2">
               {/* Advanced: the file itself, in the editor */}
               <button

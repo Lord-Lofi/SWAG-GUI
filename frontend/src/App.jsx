@@ -83,14 +83,16 @@ export default function App() {
     refreshConfs();
   }
 
-  async function handleToggle(name, key, value) {
-    const label = key === 'authelia' ? 'Authelia' : 'Error pages';
-    setStatus({ type: 'info', message: `${label} ${value ? 'on' : 'off'} for ${name}: validating...` });
+  // Row settings: { auth: 'authelia' | 'authentik' | 'none' } or { errorPages: true | false }
+  async function handleSetting(name, key, value) {
+    const NAMES = { authelia: 'Authelia', authentik: 'Authentik', none: 'no sign-in' };
+    const what = key === 'auth' ? `Sign-in set to ${NAMES[value]}` : `Error pages switched ${value ? 'on' : 'off'}`;
+    setStatus({ type: 'info', message: `${name}: validating...` });
     try {
       const r = await api.confs.setFeatures(activeInstance, name, { [key]: value });
       setStatus({
         type: r.ok ? 'success' : 'error',
-        message: r.ok ? `${label} switched ${value ? 'on' : 'off'} for ${name}; nginx reloaded.` : `Saved, but the reload failed:\n\n${r.output}`,
+        message: r.ok ? `${what} for ${name}; nginx reloaded.` : `Saved, but the reload failed:\n\n${r.output}`,
       });
     } catch (err) {
       setStatus({ type: 'error', message: `${err.message}${err.data?.output ? `\n\n${err.data.output}` : ''}` });
@@ -236,7 +238,7 @@ export default function App() {
             onEdit={handleEdit}
             onEditFile={handleEditFile}
             onDelete={handleDelete}
-            onToggle={handleToggle}
+            onSetting={handleSetting}
           />
         ) : (
           <TemplateBrowser

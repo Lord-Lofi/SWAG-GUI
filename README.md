@@ -7,8 +7,8 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 ## Features
 
 - **Proxy conf manager** — list, switch and delete active `.conf` files per instance; everyday changes go through forms, not file editing
-- **Add and edit proxy hosts** — a form for `<name>.subdomain.conf` files (upstream, port, Authelia on/off, allow list) with a live preview. Hosts made with the form open in the form again for changes, as long as nobody edited the file by hand. A failed `nginx -t` undoes the change
-- **Switches per config** — turn Authelia and the friendly error pages on or off for any active config, including ones activated from templates; only those include lines change
+- **Add and edit proxy hosts** — a form for `<name>.subdomain.conf` files (upstream, port, sign-in with Authelia or Authentik, allow list) with a live preview. Hosts made with the form open in the form again for changes, as long as nobody edited the file by hand. A failed `nginx -t` undoes the change
+- **Settings per config** — choose the sign-in (Authelia, Authentik or none) and switch the friendly error pages on or off for any active config, including ones activated from templates; only those include lines change
 - **Allow lists** — limit a host to your local network or to a list of IP addresses and ranges; everyone else gets a 403 (with the friendly page if error pages are on)
 - **Friendly error pages** — matching 403 / 404 / service-down pages (no scripts, no outside requests); one click installs them, and new hosts include them by default
 - **Template browser** — browse Linuxserver.io's `.conf.sample` library; activating one asks for the container name, port and subdomain (filled in with the template's defaults) and shows the resulting file first
@@ -23,7 +23,7 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 ```
 Browser (LAN)
   → swag-internal (TLS termination)
-  → Authelia (SSO / forward auth)
+  → Authelia or Authentik (SSO / forward auth)
   → swag-gui container
       ├── Express API + React frontend
       ├── Runs as your SWAG PUID:PGID (not root), no capabilities
@@ -160,6 +160,15 @@ Requests for a subdomain with no config fall through to SWAG's default site (`ng
 Check with **Validate** before reloading.
 
 ---
+
+## Sign-in: Authelia or Authentik
+
+Hosts, templates and existing configs can require **Authelia** or **Authentik** sign-in. Either way, SWAG Config GUI only switches on SWAG's own include files (`/config/nginx/authelia-*.conf` or `authentik-*.conf`); it never changes them. Set up the one you use once, as in [SWAG's docs](https://docs.linuxserver.io/general/swag/):
+
+- **Authelia:** check that the container name and port in `/config/nginx/authelia-server.conf` match your Authelia container.
+- **Authentik:** check that the container name and port in `/config/nginx/authentik-server.conf` match your Authentik server container.
+
+Only one provider is on at a time: choosing one comments out the other's lines. For subfolder configs (like `sonarr.subfolder.conf`), the matching `*-server.conf` line must also be switched on in SWAG's `site-confs/default.conf`, which SWAG Config GUI doesn't manage.
 
 ## Allow lists
 

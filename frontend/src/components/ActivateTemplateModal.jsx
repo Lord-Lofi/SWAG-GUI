@@ -21,7 +21,8 @@ export default function ActivateTemplateModal({ instanceId, instanceLabel, templ
           subdomain: data.subdomain ?? '',
           ...(data.upstream ?? {}),
           // Same defaults as the add-host form; left out where the template has no place for them
-          ...(data.features.authelia !== null && { authelia: true }),
+          // Authelia when the template has its lines, else Authentik
+          ...(data.features.auth !== null && { auth: data.features.authOptions.includes('authelia') ? 'authelia' : data.features.authOptions[0] ?? 'none' }),
           ...(data.features.errorPages !== null && { errorPages: true }),
         });
       })
@@ -107,14 +108,17 @@ export default function ActivateTemplateModal({ instanceId, instanceLabel, templ
               </>
             )}
 
-            {form?.authelia !== undefined && (
-              <label className="flex items-start gap-2 text-sm text-gray-300 mt-1">
-                <input type="checkbox" className="mt-1" checked={form.authelia} onChange={set('authelia')} />
-                <span>
-                  Require Authelia sign-in
-                  <span className="block text-[11px] text-gray-600">Switches on the template's Authelia lines. Turn off only for apps with their own login (e.g. Plex).</span>
-                </span>
-              </label>
+            {form?.auth !== undefined && (
+              <div className="mt-1">
+                <label className={label} htmlFor="auth">Sign-in required</label>
+                <select id="auth" className={input} value={form.auth} onChange={set('auth')}>
+                  {info.features.authOptions.map((p) => (
+                    <option key={p} value={p}>{p === 'authelia' ? 'Authelia' : 'Authentik'}</option>
+                  ))}
+                  <option value="none">None</option>
+                </select>
+                <p className="text-[11px] text-gray-600 mt-1">Switches on the template's lines for that provider. Turn off only for apps with their own login (e.g. Plex). Authentik needs SWAG's authentik-server.conf pointed at your Authentik server.</p>
+              </div>
             )}
             {form?.errorPages !== undefined && (
               <label className="flex items-start gap-2 text-sm text-gray-300">

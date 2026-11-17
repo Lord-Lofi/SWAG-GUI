@@ -122,8 +122,8 @@ router.post('/:id/hosts', async (req, res) => {
   const host = validateHost(req.body);
   const name = fileNameFor(host.subdomain);
 
-  // A host that uses the error pages needs them installed first
-  if (host.errorPages && !(await errorPages.status(instance.confsPath)).installed) {
+  // A host that uses the error pages needs them installed and up to date first
+  if (host.errorPages && !(await errorPages.status(instance.confsPath)).upToDate) {
     await errorPages.install(instance.confsPath);
   }
 
@@ -162,7 +162,7 @@ router.put('/:id/hosts/:name', async (req, res) => {
     throw Object.assign(new Error('subdomain: the subdomain of an existing host can\'t be changed'), { status: 400, field: 'subdomain' });
   }
 
-  if (host.errorPages && !(await errorPages.status(instance.confsPath)).installed) {
+  if (host.errorPages && !(await errorPages.status(instance.confsPath)).upToDate) {
     await errorPages.install(instance.confsPath);
   }
 

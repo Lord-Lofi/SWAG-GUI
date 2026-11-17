@@ -23,6 +23,7 @@ for (const name of PAGES) {
 test('snippet only covers nginx-generated errors', () => {
   assert.match(SNIPPET, /error_page 502 503 504 \/__errorpages\/50x\.html;/);
   assert.match(SNIPPET, /^\s+internal;$/m, 'pages are not reachable directly');
+  assert.match(SNIPPET, /^\s+allow all;$/m, 'visitors an allow list blocks still get the friendly 403 page');
   assert.doesNotMatch(SNIPPET, /proxy_intercept_errors\s+on/, 'apps keep their own error responses');
   assert.doesNotMatch(SNIPPET, /=200/, 'real status codes are kept');
   assert.equal(INCLUDE_LINE, 'include /config/nginx/proxy-confs/errorpages.conf;');

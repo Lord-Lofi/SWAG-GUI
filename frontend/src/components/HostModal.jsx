@@ -1,7 +1,26 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client.js';
 
-const EMPTY = { subdomain: '', upstreamApp: '', upstreamPort: '', upstreamProto: 'http', authelia: true, errorPages: true };
+const EMPTY = {
+  subdomain: '', upstreamApp: '', upstreamPort: '', upstreamProto: 'http',
+  authelia: true, errorPages: true, access: 'anyone', allowText: '',
+};
+
+// "Local network only": private IPv4 ranges, IPv6 unique-local, and loopback
+const LAN = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.1', 'fc00::/7', '::1'];
+
+// The allow list as a form setting: anyone, local network only, or a custom list
+function accessFrom(allowList = []) {
+  if (allowList.length === 0) return { access: 'anyone', allowText: '' };
+  if (allowList.join() === LAN.join()) return { access: 'lan', allowText: '' };
+  return { access: 'custom', allowText: allowList.join('\n') };
+}
+
+// What the server receives: the form fields plus the resulting allow list
+function toHost({ access, allowText, ...host }) {
+  const allowList = access === 'lan' ? LAN : access === 'custom' ? allowText.split(/[\s,]+/).filter(Boolean) : [];
+  return { ...host, allowList };
+}
 
 // Form for a proxy host: a new one, or (with editName) one made with this
 // form earlier. Shows the exact .conf that will be written (rendered by the
@@ -9,7 +28,9 @@ const EMPTY = { subdomain: '', upstreamApp: '', upstreamPort: '', upstreamProto:
 // nginx -t passes.
 export default function HostModal({ instanceId, instanceLabel, editName, initial, onSaved, onClose }) {
   const editing = Boolean(editName);
-  const [form, setForm]         = useState(() => (initial ? { ...initial, upstreamPort: String(initial.upstreamPort) } : EMPTY));
+  const [form, setForm]         = useState(() => (initial
+    ? { ...EMPTY, ...initial, upstreamPort: String(initial.upstreamPort), ...accessFrom(initial.allowList) }
+    : EMPTY));
   const [preview, setPreview]   = useState(null);
   const [problem, setProblem]   = useState(null);
   const [creating, setCreating] = useState(false);
@@ -26,7 +47,7 @@ export default function HostModal({ instanceId, instanceLabel, editName, initial
     }
     const timer = setTimeout(async () => {
       try {
-        setPreview(await api.hosts.preview(instanceId, form));
+        setPreview(await api.hosts.preview(instanceId, toHost(form)));
         setProblem(null);
       } catch (err) {
         setPreview(null);
@@ -41,8 +62,8 @@ export default function HostModal({ instanceId, instanceLabel, editName, initial
     setProblem(null);
     try {
       const result = editing
-        ? await api.hosts.update(instanceId, editName, form)
-        : await api.hosts.create(instanceId, form);
+        ? await api.hosts.update(instanceId, editName, toHost(form))
+        : await api.hosts.create(instanceId, toHost(form));
       onSaved(result);
     } catch (err) {
       const output = err.data?.output ? `\n\n${err.data.output}` : '';
@@ -103,6 +124,31 @@ export default function HostModal({ instanceId, instanceLabel, editName, initial
                 <span className="block text-[11px] text-gray-600">Shown when the service is down or access is denied. Installed automatically if needed.</span>
               </span>
             </label>
+            <div className="mt-1">
+              <label className={label} htmlFor="access">Who can connect</label>
+              <select id="access" className={input} value={form.access} onChange={set('access')}>
+                <option value="anyone">Anyone</option>
+                <option value="lan">Local network only</option>
+                <option value="custom">Only these addresses…</option>
+              </select>
+              {form.access === 'custom' && (
+                <textarea
+                  aria-label="Allowed addresses"
+                  className={`${input} mt-2 h-24`}
+                  placeholder={'192.168.1.0/24\n203.0.113.7'}
+                  value={form.allowText}
+                  onChange={set('allowText')}
+                />
+              )}
+              <p className="text-[11px] text-gray-600 mt-1">
+                {form.access === 'anyone'
+                  ? 'No address restriction.'
+                  : form.access === 'lan'
+                    ? 'Private address ranges only (10.x, 172.16–31.x, 192.168.x, IPv6 fc00::/7). Others get a 403.'
+                    : 'One IP address or range per line. Others get a 403.'}
+                {form.access !== 'anyone' && ' Uses the address nginx sees: behind Cloudflare or another proxy, set up SWAG’s real-IP settings first.'}
+              </p>
+            </div>
           </div>
 
           <div className="flex-1 min-w-0 flex flex-col">

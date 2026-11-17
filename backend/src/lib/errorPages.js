@@ -34,6 +34,8 @@ error_page 502 503 504 /__errorpages/50x.html;
 
 location ^~ /__errorpages/ {
     internal;
+    # Lets visitors an allow list blocks see the friendly 403 page, not nginx's
+    allow all;
     alias /config/nginx/proxy-confs/errorpages/;
     # No cache headers needed: browsers don't cache 403/5xx responses by default.
 }

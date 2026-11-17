@@ -27,11 +27,11 @@ Browser (LAN)
       ├── Runs as your SWAG PUID:PGID (not root), no capabilities
       ├── Volume: /mnt/swag-external/proxy-confs  (rw)
       ├── Volume: /mnt/swag-internal/proxy-confs  (rw)
-      └── Tecnativa docker-socket-proxy  (internal network, no internet)
+      └── LinuxServer.io socket-proxy  (internal network, no internet)
             └── Docker API (exec + containers endpoints only)
 ```
 
-The GUI container never holds the raw Docker socket. All Docker API access goes through [Tecnativa docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy), scoped to the `exec` and `containers` endpoints only.
+The GUI container never holds the raw Docker socket. All Docker API access goes through [LinuxServer.io's socket-proxy](https://github.com/linuxserver/docker-socket-proxy) (from the team behind SWAG), which only allows the `containers` and `exec` endpoints. File copies out of containers, logs and exports stay blocked.
 
 ### Updates
 
@@ -109,6 +109,18 @@ The entrypoint can refuse to run any release tag that you didn't sign with your 
 
 Branches can't be verified this way, because commits merged on GitHub are signed with GitHub's key rather than yours.
 
+### Switching to LinuxServer.io's socket proxy
+
+Your `docker-compose.yml` is your own copy, so pulling doesn't change it. Replace its `socket-proxy` service with the one in `docker-compose.example.yml` (new image, the extra `EVENTS`/`PING`/`VERSION` lines, `read_only` and `tmpfs`), then:
+
+```bash
+docker compose pull socket-proxy
+docker compose up -d socket-proxy
+docker compose logs socket-proxy     # should show the LinuxServer.io banner and no errors
+```
+
+Then press **Validate** in the GUI to confirm `nginx -t` still runs through the new proxy. The service name and port stay the same, so nothing else changes.
+
 ### Upgrading from 0.1.0
 
 0.2.0 runs as your PUID/PGID instead of root, so the old cache volume (created by root) must be removed once:
@@ -162,7 +174,7 @@ The Vite dev server proxies `/api` requests to the Express backend on port 3000.
 
 ## Security
 
-- Docker socket is proxied through Tecnativa (pinned release) — only `exec` and `containers` endpoints are permitted, on an internal network with no internet access
+- Docker socket is proxied through LinuxServer.io's socket-proxy (pinned release, read-only container): only the `exec` and `containers` endpoints are permitted, file copies out of containers are blocked, and it sits on an internal network with no internet access
 - The GUI container runs as your SWAG PUID/PGID, not root, with all Linux capabilities dropped and `no-new-privileges`
 - Volume mounts are scoped to `nginx/proxy-confs/` only — certs and DNS credentials are excluded
 - All filenames are checked against an allowlist and must resolve inside the proxy-confs folder, which prevents path traversal

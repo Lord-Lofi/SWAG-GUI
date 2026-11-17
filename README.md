@@ -6,14 +6,14 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 
 ## Features
 
-- **Proxy conf manager** — list, enable, disable, and edit active `.conf` files per instance
+- **Proxy conf manager** — list, switch and delete active `.conf` files per instance; everyday changes go through forms, not file editing
 - **Add and edit proxy hosts** — a form for `<name>.subdomain.conf` files (upstream, port, Authelia on/off, allow list) with a live preview. Hosts made with the form open in the form again for changes, as long as nobody edited the file by hand. A failed `nginx -t` undoes the change
 - **Switches per config** — turn Authelia and the friendly error pages on or off for any active config, including ones activated from templates; only those include lines change
 - **Allow lists** — limit a host to your local network or to a list of IP addresses and ranges; everyone else gets a 403 (with the friendly page if error pages are on)
 - **Friendly error pages** — matching 403 / 404 / service-down pages (no scripts, no outside requests); one click installs them, and new hosts include them by default
 - **Template browser** — browse Linuxserver.io's `.conf.sample` library; activating one asks for the container name, port and subdomain (filled in with the template's defaults) and shows the resulting file first
-- **Monaco editor** — in-browser conf editing with nginx syntax highlighting
-- **Nginx validation gate** — every save runs `nginx -t` before reload; broken configs are blocked and the error is shown inline
+- **Advanced: edit file** — for anything the forms don't cover, edit any config by hand in Monaco with nginx syntax highlighting. It downloads only when opened, and a failed `nginx -t` puts the file back as it was
+- **Nginx validation gate** — every change runs `nginx -t` before reload; a failing change is undone and the error is shown inline
 - **Dual-instance support** — manages `swag-external` and `swag-internal` from a single interface
 
 ---

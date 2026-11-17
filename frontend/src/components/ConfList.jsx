@@ -1,5 +1,7 @@
 // Active configs. Each row has switches for Authelia and the friendly error
-// pages; a switch is greyed out when the file has no place for it.
+// pages (greyed out when the file has no place for them). Hosts made with
+// the form have Edit, which reopens the form; "Edit file" is the advanced
+// option for changing any file by hand.
 const SWITCHES = [
   { key: 'authelia', label: 'Authelia', none: 'This config has no Authelia include lines' },
   { key: 'errorPages', label: 'Error pages', none: 'Subfolder configs use the error pages of the site they belong to' },
@@ -25,7 +27,7 @@ function Switch({ label, state, title, onChange }) {
   );
 }
 
-export default function ConfList({ confs, onEdit, onDelete, onToggle }) {
+export default function ConfList({ confs, onEdit, onEditFile, onDelete, onToggle }) {
   if (confs.length === 0) {
     return (
       <p className="text-gray-600 text-sm mt-6 text-center">
@@ -57,13 +59,25 @@ export default function ConfList({ confs, onEdit, onDelete, onToggle }) {
                 <Switch key={key} label={label} state={state} title={title} onChange={(value) => onToggle(conf.name, key, value)} />
               );
             })}
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              {/* Advanced: the file itself, in the editor */}
               <button
-                onClick={() => onEdit(conf.name)}
-                className="px-3 py-1 rounded-sm text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
+                onClick={() => onEditFile(conf.name)}
+                title={conf.managed
+                  ? 'Advanced: edit the file by hand. After that, Edit (the form) no longer works for it.'
+                  : 'Advanced: edit the file by hand'}
+                className="px-2 py-1 text-xs text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline"
               >
-                Edit
+                Edit file
               </button>
+              {conf.managed && (
+                <button
+                  onClick={() => onEdit(conf.name)}
+                  className="px-3 py-1 rounded-sm text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
+                >
+                  Edit
+                </button>
+              )}
               <button
                 onClick={() => {
                   if (window.confirm(`Delete ${conf.name}?\n\nThis cannot be undone.`)) {

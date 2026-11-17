@@ -59,29 +59,41 @@ services:
     depends_on:
       - socket-proxy
 
-  # -- Tecnativa docker-socket-proxy -------------------------------------------
-  # Sits between the GUI container and the Docker daemon. The raw Docker
-  # socket is never mounted into swag-gui.
+  # -- Docker socket proxy (LinuxServer.io) ------------------------------------
+  # Sits between the GUI container and the Docker daemon, so the raw Docker
+  # socket is never mounted into swag-gui. Made by LinuxServer.io, the same
+  # team as SWAG; a drop-in replacement for Tecnativa's docker-socket-proxy.
   #
   # Pinned to a release instead of :latest so an upstream change can't reach
   # this container unannounced. Check for new releases at
-  # https://github.com/Tecnativa/docker-socket-proxy/releases
+  # https://github.com/linuxserver/docker-socket-proxy/releases
   socket-proxy:
-    image: tecnativa/docker-socket-proxy:v0.5.0
+    image: lscr.io/linuxserver/socket-proxy:3.4.7-r0-ls106
     container_name: swag-gui-socket-proxy
     restart: unless-stopped
     environment:
-      - CONTAINERS=1  # required: find the SWAG containers
-      - EXEC=1        # required: run nginx -t / nginx -s reload inside them
+      - CONTAINERS=1  # required: the exec call goes to /containers/<name>/exec
+      - EXEC=1        # required: run nginx -t / nginx -s reload inside SWAG
       - POST=1        # required: creating and starting an exec is a POST request
-      # All other API sections default to 0 (denied). Do not enable IMAGES,
-      # NETWORKS, VOLUMES, or SERVICES unless a feature explicitly needs them.
+      # This image turns a few read-only sections on by default; SWAG-GUI
+      # needs none of them.
+      - EVENTS=0
+      - PING=0
+      - VERSION=0
+      # Everything else is off. Copying files out of containers (archive),
+      # export, logs and pause stay blocked even with CONTAINERS=1.
+      # Do not enable IMAGES, NETWORKS, VOLUMES, or SERVICES unless a feature
+      # explicitly needs them.
       #
-      # Note: POST=1 with CONTAINERS=1 also allows container create/start/stop
+      # Note: POST=1 with CONTAINERS=1 still allows container create/start/stop
       # through this proxy. Only swag-gui can reach it (socket-proxy-net is
       # internal), which is why the GUI itself must stay locked down.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Read-only container; it only writes its generated config to /run
+    read_only: true
+    tmpfs:
+      - /run
     security_opt:
       - no-new-privileges:true
     networks:

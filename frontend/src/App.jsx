@@ -3,7 +3,7 @@ import InstanceSwitcher from './components/InstanceSwitcher.jsx';
 import ConfList from './components/ConfList.jsx';
 import TemplateBrowser from './components/TemplateBrowser.jsx';
 import EditorModal from './components/EditorModal.jsx';
-import AddHostModal from './components/AddHostModal.jsx';
+import HostModal from './components/HostModal.jsx';
 import ActivateTemplateModal from './components/ActivateTemplateModal.jsx';
 import { api } from './api/client.js';
 
@@ -15,7 +15,7 @@ export default function App() {
   const [editTarget, setEditTarget]     = useState(null);
   const [status, setStatus]             = useState(null);
   const [loading, setLoading]           = useState(false);
-  const [addingHost, setAddingHost]     = useState(false);
+  const [hostForm, setHostForm]         = useState(null); // { editName?, initial? }
   const [activating, setActivating]     = useState(null);
 
   useEffect(() => {
@@ -37,7 +37,14 @@ export default function App() {
 
   useEffect(() => { refreshConfs(); }, [refreshConfs]);
 
+  // Hosts made with the form open in the form; everything else in the editor
   async function handleEdit(name) {
+    const conf = confs.find(c => c.name === name);
+    if (conf?.managed) {
+      const { host } = await api.hosts.get(activeInstance, name);
+      setHostForm({ editName: name, initial: host });
+      return;
+    }
     const { content } = await api.confs.read(activeInstance, name);
     setEditTarget({ name, content });
   }
@@ -78,13 +85,14 @@ export default function App() {
     refreshConfs();
   }
 
-  function handleHostCreated(result) {
-    setAddingHost(false);
+  function handleHostSaved(result) {
+    setHostForm(null);
+    const what = result.created ? `Created ${result.created}` : `Saved ${result.updated}`;
     setStatus({
       type: result.ok ? 'success' : 'error',
       message: result.ok
-        ? `Created ${result.created} and reloaded nginx.`
-        : `Created ${result.created}, but the reload failed:\n\n${result.output}`,
+        ? `${what} and reloaded nginx.`
+        : `${what}, but the reload failed:\n\n${result.output}`,
     });
     refreshConfs();
   }
@@ -170,7 +178,7 @@ export default function App() {
         ))}
         <div className="ml-auto flex gap-2">
           <button
-            onClick={() => setAddingHost(true)}
+            onClick={() => setHostForm({})}
             disabled={!activeInstance}
             className="px-3 py-1.5 rounded-sm text-xs bg-green-700 hover:bg-green-600 text-white transition-colors disabled:opacity-40"
           >
@@ -218,12 +226,14 @@ export default function App() {
         )}
       </main>
 
-      {addingHost && (
-        <AddHostModal
+      {hostForm && (
+        <HostModal
           instanceId={activeInstance}
           instanceLabel={instances.find(i => i.id === activeInstance)?.label ?? activeInstance}
-          onCreated={handleHostCreated}
-          onClose={() => setAddingHost(false)}
+          editName={hostForm.editName}
+          initial={hostForm.initial}
+          onSaved={handleHostSaved}
+          onClose={() => setHostForm(null)}
         />
       )}
 

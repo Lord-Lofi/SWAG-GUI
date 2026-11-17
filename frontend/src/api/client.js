@@ -31,6 +31,8 @@ export const api = {
   hosts: {
     preview: (id, host) => request('POST', `/instances/${id}/hosts/preview`, host),
     create:  (id, host) => request('POST', `/instances/${id}/hosts`, host),
+    get:     (id, name) => request('GET',  `/instances/${id}/hosts/${encodeURIComponent(name)}`),
+    update:  (id, name, host) => request('PUT', `/instances/${id}/hosts/${encodeURIComponent(name)}`, host),
   },
   templates: {
     get:      (id, name)         => request('GET',  `/instances/${id}/templates/${encodeURIComponent(name)}`),

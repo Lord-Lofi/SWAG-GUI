@@ -111,3 +111,34 @@ ${auth('        include /config/nginx/authelia-location.conf;')}
 }
 `;
 }
+
+// Reads a config back into form values, so the form can edit it later.
+//
+// Only works for files this GUI created and nobody has changed by hand:
+// the values are read out, the file is rendered again from them, and the
+// two must match exactly. Returns null otherwise, so a form save can never
+// throw away hand-made changes; those files are edited in the editor.
+export function parseHostConf(content) {
+  if (typeof content !== 'string' || !content.includes('\n# Created by SWAG Config GUI\n')) return null;
+
+  const pick = (re) => content.match(re)?.[1];
+  const date = pick(/^## Version (\d{4}\/\d{2}\/\d{2})\n/);
+  const values = {
+    subdomain: pick(/^\s*server_name ([a-z0-9-]+)\.\*;$/m),
+    upstreamApp: pick(/^\s*set \$upstream_app (\S+);$/m),
+    upstreamPort: pick(/^\s*set \$upstream_port (\d+);$/m),
+    upstreamProto: pick(/^\s*set \$upstream_proto (\S+);$/m),
+    authelia: /^\s*include \/config\/nginx\/authelia-server\.conf;$/m.test(content),
+    errorPages: content.includes(`    ${ERROR_PAGES_INCLUDE}\n`),
+  };
+  if (!date || !values.subdomain) return null;
+
+  let host;
+  try {
+    host = validateHost(values);
+  } catch {
+    return null;
+  }
+  const now = new Date(`${date.replace(/\//g, '-')}T00:00:00Z`);
+  return renderHostConf(host, now) === content ? host : null;
+}

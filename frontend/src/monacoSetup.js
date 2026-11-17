@@ -1,14 +1,12 @@
-// Bundle Monaco Editor with the app instead of loading it from a CDN.
+// Sets up Monaco Editor, bundled with the app instead of loaded from a CDN.
 //
-// By default @monaco-editor/react downloads Monaco from cdn.jsdelivr.net at
-// runtime. Using the npm copy means no third-party code is loaded into this
-// admin panel, the editor works without internet access (for example on the
-// break-glass port), and Monaco's dependencies are covered by
-// package-lock.json, npm audit and Dependabot.
+// Monaco comes straight from the monaco-editor npm package; there is no
+// wrapper library in between. Its dependencies are covered by
+// package-lock.json, npm audit and Dependabot, and the editor works without
+// internet access (for example on the break-glass port).
 //
 // Uses Monaco's slim entry point with all editor features but no language
-// packs: Monaco has no nginx language, so configs are edited as plain text.
-import { loader } from '@monaco-editor/react';
+// packs. Monaco has no nginx language, so a small one is defined below.
 import * as monaco from 'monaco-editor/editor';
 import 'monaco-editor/features/register.all';
 // "?worker" tells Vite to bundle Monaco's background worker as its own file.
@@ -22,4 +20,32 @@ self.MonacoEnvironment = {
   },
 };
 
-loader.config({ monaco });
+// Syntax highlighting for nginx configs: comments, $variables, strings,
+// numbers and sizes, and the directive name at the start of each statement.
+monaco.languages.register({ id: 'nginx' });
+monaco.languages.setLanguageConfiguration('nginx', {
+  comments: { lineComment: '#' },
+  brackets: [['{', '}']],
+  autoClosingPairs: [
+    { open: '{', close: '}' },
+    { open: '"', close: '"' },
+    { open: "'", close: "'" },
+  ],
+});
+monaco.languages.setMonarchTokensProvider('nginx', {
+  tokenizer: {
+    root: [
+      [/#.*$/, 'comment'],
+      [/\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/, 'variable'],
+      [/"([^"\\]|\\.)*"/, 'string'],
+      [/'([^'\\]|\\.)*'/, 'string'],
+      [/[{};]/, 'delimiter'],
+      [/\b\d+[kKmMgGsShHdD]?\b/, 'number'],
+      // The first word of a statement is the directive (e.g. proxy_pass)
+      [/(^\s*|[{;]\s*)([A-Za-z_][A-Za-z0-9_]*)/, ['', 'keyword']],
+      [/[^\s{};"'#$]+/, ''],
+    ],
+  },
+});
+
+export { monaco };

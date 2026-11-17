@@ -19,14 +19,12 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-      # react and react-dom must always be the same version, and the Monaco
-      # wrapper declares which React versions it supports.
+      # react and react-dom must always be the same version.
       react:
         applies-to: version-updates
         patterns:
           - "react"
           - "react-dom"
-          - "@monaco-editor/react"
       # tailwindcss and @tailwindcss/vite must be exactly the same version.
       tailwind:
         applies-to: version-updates

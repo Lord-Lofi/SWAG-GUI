@@ -10,7 +10,7 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 - **Add proxy host** — a form for new `<name>.subdomain.conf` files (upstream, port, Authelia on/off) with a live preview; a failed `nginx -t` removes the new file again
 - **Friendly error pages** — matching 403 / 404 / service-down pages (no scripts, no outside requests); one click installs them, and new hosts include them by default
 - **Template browser** — browse Linuxserver.io's `.conf.sample` library and activate with one click
-- **Monaco editor** — syntax-highlighted in-browser conf editing
+- **Monaco editor** — in-browser conf editing with nginx syntax highlighting
 - **Nginx validation gate** — every save runs `nginx -t` before reload; broken configs are blocked and the error is shown inline
 - **Dual-instance support** — manages `swag-external` and `swag-internal` from a single interface
 
@@ -182,7 +182,7 @@ The Vite dev server proxies `/api` requests to the Express backend on port 3000.
 - `nginx -t` runs before every reload — a failing config cannot reach nginx
 - Changes through the API require a custom header and a same-site origin, which blocks cross-site request forgery
 - Security headers on every response: a strict Content-Security-Policy (no third-party code), no framing, no referrer
-- Monaco Editor is bundled from npm, not loaded from a CDN
+- Monaco Editor is bundled from npm, not loaded from a CDN, and used directly without a wrapper package
 - The break-glass port is off by default and requires its own password (scrypt hash, lockout after 5 failures)
 - The app runs a pinned release tag, optionally checked against your GPG signature before it runs
 - `npm ci --ignore-scripts` blocks postinstall script execution at startup

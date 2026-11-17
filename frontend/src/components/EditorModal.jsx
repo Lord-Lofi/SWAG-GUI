@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Editor from '@monaco-editor/react';
+import CodeEditor from './CodeEditor.jsx';
 
 export default function EditorModal({ name, content, onSave, onClose }) {
   const [value, setValue]   = useState(content);
@@ -31,22 +31,7 @@ export default function EditorModal({ name, content, onSave, onClose }) {
 
         {/* Monaco editor */}
         <div className="flex-1 min-h-0">
-          <Editor
-            height="60vh"
-            defaultLanguage="nginx"
-            value={value}
-            onChange={v => setValue(v ?? '')}
-            theme="vs-dark"
-            options={{
-              fontSize: 13,
-              fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              wordWrap: 'on',
-              tabSize: 4,
-              renderLineHighlight: 'all',
-            }}
-          />
+          <CodeEditor value={content} onChange={setValue} />
         </div>
 
         {/* Footer */}

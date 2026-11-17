@@ -26,12 +26,16 @@ export const api = {
     list:   (id)              => request('GET',    `/instances/${id}/confs`),
     read:   (id, name)        => request('GET',    `/instances/${id}/confs/${encodeURIComponent(name)}`),
     write:  (id, name, content) => request('PUT',  `/instances/${id}/confs/${encodeURIComponent(name)}`, { content }),
-    enable: (id, name)        => request('POST',   `/instances/${id}/confs/${encodeURIComponent(name)}/enable`),
     remove: (id, name)        => request('DELETE', `/instances/${id}/confs/${encodeURIComponent(name)}`),
   },
   hosts: {
     preview: (id, host) => request('POST', `/instances/${id}/hosts/preview`, host),
     create:  (id, host) => request('POST', `/instances/${id}/hosts`, host),
+  },
+  templates: {
+    get:      (id, name)         => request('GET',  `/instances/${id}/templates/${encodeURIComponent(name)}`),
+    preview:  (id, name, values) => request('POST', `/instances/${id}/templates/${encodeURIComponent(name)}/preview`, values),
+    activate: (id, name, values) => request('POST', `/instances/${id}/templates/${encodeURIComponent(name)}/activate`, values),
   },
   errorPages: {
     status:  (id) => request('GET',  `/instances/${id}/errorpages`),

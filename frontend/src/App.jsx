@@ -4,6 +4,7 @@ import ConfList from './components/ConfList.jsx';
 import TemplateBrowser from './components/TemplateBrowser.jsx';
 import EditorModal from './components/EditorModal.jsx';
 import AddHostModal from './components/AddHostModal.jsx';
+import ActivateTemplateModal from './components/ActivateTemplateModal.jsx';
 import { api } from './api/client.js';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
   const [status, setStatus]             = useState(null);
   const [loading, setLoading]           = useState(false);
   const [addingHost, setAddingHost]     = useState(false);
+  const [activating, setActivating]     = useState(null);
 
   useEffect(() => {
     api.instances.list().then(data => {
@@ -58,9 +60,15 @@ export default function App() {
     refreshConfs();
   }
 
-  async function handleEnable(name) {
-    await api.confs.enable(activeInstance, name);
-    setStatus({ type: 'success', message: `Activated: ${name.replace('.sample', '')}` });
+  function handleActivated(result) {
+    setActivating(null);
+    setStatus({
+      type: result.ok ? 'success' : 'error',
+      message: result.ok
+        ? `Activated ${result.created} and reloaded nginx.`
+        : `Activated ${result.created}, but the reload failed:\n\n${result.output}`,
+    });
+    setView('confs');
     refreshConfs();
   }
 
@@ -204,8 +212,8 @@ export default function App() {
         ) : (
           <TemplateBrowser
             templates={confs.filter(c => c.isSample)}
-            onActivate={handleEnable}
-            onPreview={handleEdit}
+            activeNames={new Set(confs.filter(c => !c.isSample).map(c => c.name))}
+            onActivate={setActivating}
           />
         )}
       </main>
@@ -216,6 +224,16 @@ export default function App() {
           instanceLabel={instances.find(i => i.id === activeInstance)?.label ?? activeInstance}
           onCreated={handleHostCreated}
           onClose={() => setAddingHost(false)}
+        />
+      )}
+
+      {activating && (
+        <ActivateTemplateModal
+          instanceId={activeInstance}
+          instanceLabel={instances.find(i => i.id === activeInstance)?.label ?? activeInstance}
+          template={activating}
+          onActivated={handleActivated}
+          onClose={() => setActivating(null)}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, copyFile, unlink, constants } from 'node:fs/promises';
+import { readdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
 // The container runs as FILE_UID:FILE_GID (your SWAG PUID/PGID), so new and
@@ -38,23 +38,6 @@ export async function create(confsPath, filename, content) {
     }
     throw err;
   });
-}
-
-export async function enableSample(confsPath, sampleName) {
-  if (!sampleName.endsWith('.conf.sample')) {
-    throw Object.assign(new Error('Target is not a .conf.sample file'), { status: 400 });
-  }
-  const source = safePath(confsPath, sampleName);
-  const targetName = sampleName.replace(/\.sample$/, '');
-  const dest = safePath(confsPath, targetName);
-  // COPYFILE_EXCL: never overwrite an existing active config
-  await copyFile(source, dest, constants.COPYFILE_EXCL).catch((err) => {
-    if (err.code === 'EEXIST') {
-      throw Object.assign(new Error(`${targetName} already exists`), { status: 409 });
-    }
-    throw err;
-  });
-  return targetName;
 }
 
 export async function remove(confsPath, filename) {

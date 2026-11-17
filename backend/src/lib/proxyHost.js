@@ -21,15 +21,18 @@ function invalid(field, message) {
   return Object.assign(new Error(`${field}: ${message}`), { status: 400, field });
 }
 
-// Checks and normalises the form fields. Throws a 400 error naming the
-// first field that is wrong.
-export function validateHost(input) {
-  if (!input || typeof input !== 'object') throw invalid('body', 'expected a JSON object');
-
-  const subdomain = typeof input.subdomain === 'string' ? input.subdomain.trim().toLowerCase() : '';
+export function validateSubdomain(value) {
+  const subdomain = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (!SUBDOMAIN.test(subdomain)) {
     throw invalid('subdomain', 'use lowercase letters, digits and hyphens (e.g. "plex")');
   }
+  return subdomain;
+}
+
+// Checks the upstream fields (where nginx forwards requests to). Shared by
+// the add-host form and template activation.
+export function validateUpstream(input) {
+  if (!input || typeof input !== 'object') throw invalid('body', 'expected a JSON object');
 
   const upstreamApp = typeof input.upstreamApp === 'string' ? input.upstreamApp.trim() : '';
   if (!UPSTREAM_APP.test(upstreamApp)) {
@@ -45,6 +48,17 @@ export function validateHost(input) {
   if (!PROTOCOLS.has(upstreamProto)) {
     throw invalid('upstreamProto', 'use http or https');
   }
+
+  return { upstreamApp, upstreamPort, upstreamProto };
+}
+
+// Checks and normalises the form fields. Throws a 400 error naming the
+// first field that is wrong.
+export function validateHost(input) {
+  if (!input || typeof input !== 'object') throw invalid('body', 'expected a JSON object');
+
+  const subdomain = validateSubdomain(input.subdomain);
+  const { upstreamApp, upstreamPort, upstreamProto } = validateUpstream(input);
 
   const authelia = input.authelia === undefined ? true : input.authelia;
   if (typeof authelia !== 'boolean') throw invalid('authelia', 'must be true or false');

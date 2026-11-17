@@ -3,6 +3,7 @@ import * as confFiles from '../lib/confFiles.js';
 import * as docker from '../lib/docker.js';
 import { validateHost, fileNameFor, renderHostConf } from '../lib/proxyHost.js';
 import * as errorPages from '../lib/errorPages.js';
+import * as templates from '../lib/templates.js';
 
 const router = Router();
 
@@ -35,6 +36,37 @@ function getInstance(id) {
   return instance;
 }
 
+// Writes a config and keeps it only if nginx accepts it.
+//
+// `previous` is the file's old content, or undefined for a new file. If
+// nginx -t fails, a new file is removed and a changed file gets its old
+// content back, so a bad change never stays behind. If it passes, nginx is
+// reloaded.
+async function saveAndReload(instance, name, content, previous) {
+  if (previous === undefined) {
+    await confFiles.create(instance.confsPath, name, content);
+  } else {
+    await confFiles.write(instance.confsPath, name, content);
+  }
+
+  const validation = await docker.nginxValidate(instance.container);
+  if (!validation.ok) {
+    if (previous === undefined) {
+      await confFiles.remove(instance.confsPath, name);
+    } else {
+      await confFiles.write(instance.confsPath, name, previous);
+    }
+    const undone = previous === undefined ? 'was removed again' : 'was put back as it was';
+    return { status: 422, body: { error: `nginx -t failed, so ${name} ${undone}`, ...validation } };
+  }
+
+  const reload = await docker.nginxReload(instance.container);
+  return {
+    status: previous === undefined ? 201 : 200,
+    body: { ok: reload.ok, name, output: reload.output },
+  };
+}
+
 // GET /api/instances
 router.get('/', (_req, res) => {
   res.json(Object.values(instances).map(({ id, label }) => ({ id, label })));
@@ -58,13 +90,6 @@ router.put('/:id/confs/:name', async (req, res) => {
   const instance = getInstance(req.params.id);
   await confFiles.write(instance.confsPath, req.params.name, req.body.content);
   res.json({ ok: true });
-});
-
-// POST /api/instances/:id/confs/:name/enable  — activate a .conf.sample
-router.post('/:id/confs/:name/enable', async (req, res) => {
-  const instance = getInstance(req.params.id);
-  const created = await confFiles.enableSample(instance.confsPath, req.params.name);
-  res.json({ ok: true, created });
 });
 
 // DELETE /api/instances/:id/confs/:name
@@ -95,20 +120,44 @@ router.post('/:id/hosts', async (req, res) => {
     await errorPages.install(instance.confsPath);
   }
 
-  await confFiles.create(instance.confsPath, name, renderHostConf(host));
-
-  const validation = await docker.nginxValidate(instance.container);
-  if (!validation.ok) {
-    await confFiles.remove(instance.confsPath, name);
-    return res.status(422).json({
-      error: `nginx -t failed, so ${name} was removed again`,
-      ...validation,
-    });
-  }
-
-  const reload = await docker.nginxReload(instance.container);
-  res.status(201).json({ ok: reload.ok, created: name, output: reload.output });
+  const result = await saveAndReload(instance, name, renderHostConf(host));
+  res.status(result.status).json({ ...result.body, created: name });
 });
+
+// GET /api/instances/:id/templates/:name — what the activation form can
+// fill in for a .conf.sample template, with the template's own values
+router.get('/:id/templates/:name', async (req, res) => {
+  const { info, content } = await loadTemplate(req);
+  res.json({ name: req.params.name, target: templates.targetName(req.params.name), content, ...info });
+});
+
+// POST /api/instances/:id/templates/:name/preview — the file activation
+// would create, without writing anything
+router.post('/:id/templates/:name/preview', async (req, res) => {
+  const { info, content } = await loadTemplate(req);
+  const values = templates.validate(info, req.body);
+  res.json({ name: templates.targetName(req.params.name, values), content: templates.apply(content, info, values) });
+});
+
+// POST /api/instances/:id/templates/:name/activate — creates the active
+// config from the template and the form values, then runs nginx -t (a failed
+// test removes the new file again) and reloads
+router.post('/:id/templates/:name/activate', async (req, res) => {
+  const { instance, info, content } = await loadTemplate(req);
+  const values = templates.validate(info, req.body);
+  const name = templates.targetName(req.params.name, values);
+  const result = await saveAndReload(instance, name, templates.apply(content, info, values));
+  res.status(result.status).json({ ...result.body, created: name });
+});
+
+async function loadTemplate(req) {
+  const instance = getInstance(req.params.id);
+  if (!templates.isTemplate(req.params.name)) {
+    throw Object.assign(new Error('Not a .conf.sample template'), { status: 400 });
+  }
+  const content = await confFiles.read(instance.confsPath, req.params.name);
+  return { instance, content, info: templates.describe(content, req.params.name) };
+}
 
 // GET /api/instances/:id/errorpages — are the error pages installed and current?
 router.get('/:id/errorpages', async (req, res) => {

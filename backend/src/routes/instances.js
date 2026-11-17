@@ -4,6 +4,7 @@ import * as docker from '../lib/docker.js';
 import { validateHost, fileNameFor, renderHostConf, parseHostConf } from '../lib/proxyHost.js';
 import * as errorPages from '../lib/errorPages.js';
 import * as templates from '../lib/templates.js';
+import * as features from '../lib/features.js';
 
 const router = Router();
 
@@ -73,16 +74,56 @@ router.get('/', (_req, res) => {
 });
 
 // GET /api/instances/:id/confs
-// "managed" marks hosts made with the form and not changed by hand since:
-// those can be edited with the form again.
+// For active configs:
+//   managed   made with the form and not changed by hand since, so the form
+//             can edit it again
+//   features  the Authelia and error-page switches (null: not available)
 router.get('/:id/confs', async (req, res) => {
   const instance = getInstance(req.params.id);
   const confs = await confFiles.list(instance.confsPath);
   for (const conf of confs) {
-    conf.managed = conf.name.endsWith('.subdomain.conf')
-      && parseHostConf(await confFiles.read(instance.confsPath, conf.name)) !== null;
+    if (conf.isSample) continue;
+    const content = await confFiles.read(instance.confsPath, conf.name);
+    conf.managed = conf.name.endsWith('.subdomain.conf') && parseHostConf(content) !== null;
+    conf.features = features.detect(content);
   }
   res.json(confs);
+});
+
+// PATCH /api/instances/:id/confs/:name/features — switches Authelia and/or
+// the error pages on or off, e.g. { "authelia": true }. Only those lines
+// change; a failed nginx -t puts the file back as it was.
+router.patch('/:id/confs/:name/features', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  const name = req.params.name;
+  if (templates.isTemplate(name)) {
+    throw Object.assign(new Error('Templates are switched on with Activate'), { status: 400 });
+  }
+  const previous = await confFiles.read(instance.confsPath, name);
+  const changes = { authelia: req.body?.authelia, errorPages: req.body?.errorPages };
+
+  // Form-made hosts are rendered again, so the form can still edit them
+  const host = parseHostConf(previous);
+  let content;
+  if (host && fileNameFor(host.subdomain) === name) {
+    for (const key of Object.keys(changes)) {
+      if (changes[key] === undefined) continue;
+      if (typeof changes[key] !== 'boolean') {
+        throw Object.assign(new Error(`${key}: must be true or false`), { status: 400, field: key });
+      }
+      host[key] = changes[key];
+    }
+    content = renderHostConf(host);
+  } else {
+    content = features.apply(previous, changes);
+  }
+
+  if (content === previous) return res.json({ ok: true, name, unchanged: true });
+  if (changes.errorPages && !(await errorPages.status(instance.confsPath)).upToDate) {
+    await errorPages.install(instance.confsPath);
+  }
+  const result = await saveAndReload(instance, name, content, previous);
+  res.status(result.status).json(result.body);
 });
 
 // GET /api/instances/:id/confs/:name
@@ -174,7 +215,7 @@ router.put('/:id/hosts/:name', async (req, res) => {
 // fill in for a .conf.sample template, with the template's own values
 router.get('/:id/templates/:name', async (req, res) => {
   const { info, content } = await loadTemplate(req);
-  res.json({ name: req.params.name, target: templates.targetName(req.params.name), content, ...info });
+  res.json({ name: req.params.name, target: templates.targetName(req.params.name), content, ...info, features: features.detect(content) });
 });
 
 // POST /api/instances/:id/templates/:name/preview — the file activation
@@ -182,7 +223,7 @@ router.get('/:id/templates/:name', async (req, res) => {
 router.post('/:id/templates/:name/preview', async (req, res) => {
   const { info, content } = await loadTemplate(req);
   const values = templates.validate(info, req.body);
-  res.json({ name: templates.targetName(req.params.name, values), content: templates.apply(content, info, values) });
+  res.json({ name: templates.targetName(req.params.name, values), content: renderTemplate(content, info, values, req.body) });
 });
 
 // POST /api/instances/:id/templates/:name/activate — creates the active
@@ -192,9 +233,25 @@ router.post('/:id/templates/:name/activate', async (req, res) => {
   const { instance, info, content } = await loadTemplate(req);
   const values = templates.validate(info, req.body);
   const name = templates.targetName(req.params.name, values);
-  const result = await saveAndReload(instance, name, templates.apply(content, info, values));
+  const output = renderTemplate(content, info, values, req.body);
+  if (features.detect(output).errorPages && !(await errorPages.status(instance.confsPath)).upToDate) {
+    await errorPages.install(instance.confsPath);
+  }
+  const result = await saveAndReload(instance, name, output);
   res.status(result.status).json({ ...result.body, created: name });
 });
+
+// The template with the form values and the Authelia / error-page switches
+// applied (switches the template has no place for are left out)
+function renderTemplate(content, info, values, body = {}) {
+  const filled = templates.apply(content, info, values);
+  const available = features.detect(filled);
+  const changes = {};
+  for (const key of ['authelia', 'errorPages']) {
+    if (body[key] !== undefined && available[key] !== null) changes[key] = body[key];
+  }
+  return features.apply(filled, changes);
+}
 
 async function loadTemplate(req) {
   const instance = getInstance(req.params.id);

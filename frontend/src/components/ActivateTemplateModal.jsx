@@ -17,7 +17,13 @@ export default function ActivateTemplateModal({ instanceId, instanceLabel, templ
     api.templates.get(instanceId, template)
       .then((data) => {
         setInfo(data);
-        setForm({ subdomain: data.subdomain ?? '', ...(data.upstream ?? {}) });
+        setForm({
+          subdomain: data.subdomain ?? '',
+          ...(data.upstream ?? {}),
+          // Same defaults as the add-host form; left out where the template has no place for them
+          ...(data.features.authelia !== null && { authelia: true }),
+          ...(data.features.errorPages !== null && { errorPages: true }),
+        });
       })
       .catch((err) => setProblem(err.message));
   }, [instanceId, template]);
@@ -37,7 +43,8 @@ export default function ActivateTemplateModal({ instanceId, instanceLabel, templ
     return () => clearTimeout(timer);
   }, [form, instanceId, template]);
 
-  const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  const set = (field) => (e) =>
+    setForm((f) => ({ ...f, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
 
   async function handleActivate() {
     setActivating(true);
@@ -98,6 +105,25 @@ export default function ActivateTemplateModal({ instanceId, instanceLabel, templ
                   </div>
                 </div>
               </>
+            )}
+
+            {form?.authelia !== undefined && (
+              <label className="flex items-start gap-2 text-sm text-gray-300 mt-1">
+                <input type="checkbox" className="mt-1" checked={form.authelia} onChange={set('authelia')} />
+                <span>
+                  Require Authelia sign-in
+                  <span className="block text-[11px] text-gray-600">Switches on the template's Authelia lines. Turn off only for apps with their own login (e.g. Plex).</span>
+                </span>
+              </label>
+            )}
+            {form?.errorPages !== undefined && (
+              <label className="flex items-start gap-2 text-sm text-gray-300">
+                <input type="checkbox" className="mt-1" checked={form.errorPages} onChange={set('errorPages')} />
+                <span>
+                  Use friendly error pages
+                  <span className="block text-[11px] text-gray-600">Shown when the service is down or access is denied. Installed automatically if needed.</span>
+                </span>
+              </label>
             )}
 
             {info?.note && <p className="text-xs text-amber-300/80">{info.note}</p>}

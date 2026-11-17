@@ -79,6 +79,21 @@ export default function App() {
     refreshConfs();
   }
 
+  async function handleToggle(name, key, value) {
+    const label = key === 'authelia' ? 'Authelia' : 'Error pages';
+    setStatus({ type: 'info', message: `${label} ${value ? 'on' : 'off'} for ${name}: validating...` });
+    try {
+      const r = await api.confs.setFeatures(activeInstance, name, { [key]: value });
+      setStatus({
+        type: r.ok ? 'success' : 'error',
+        message: r.ok ? `${label} switched ${value ? 'on' : 'off'} for ${name}; nginx reloaded.` : `Saved, but the reload failed:\n\n${r.output}`,
+      });
+    } catch (err) {
+      setStatus({ type: 'error', message: `${err.message}${err.data?.output ? `\n\n${err.data.output}` : ''}` });
+    }
+    refreshConfs();
+  }
+
   async function handleDelete(name) {
     await api.confs.remove(activeInstance, name);
     setStatus({ type: 'success', message: `Removed: ${name}` });
@@ -216,6 +231,7 @@ export default function App() {
             confs={confs.filter(c => !c.isSample)}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            onToggle={handleToggle}
           />
         ) : (
           <TemplateBrowser

@@ -1,28 +1,20 @@
-// Health of one SWAG instance: nginx and PHP versions (flagged when they are
-// older than a known security fix), whether HTTP/2 and HTTP/3 are on, and
-// the certificate's domains and expiry.
+// Health of one SWAG instance: which SWAG image it runs and how old it is,
+// the nginx and PHP versions inside it, whether HTTP/2 and HTTP/3 are on,
+// and the certificate's domains and expiry.
+//
+// nginx, PHP and certbot are only updated by pulling a newer SWAG image, so
+// the image's age is the thing to watch: linuxserver.io rebuilds SWAG at
+// least weekly, and security fixes arrive that way.
 //
 // Everything is read by running fixed commands inside the SWAG container
-// through the socket proxy (the same access the GUI already uses for
-// nginx -t). No value from the browser ever becomes part of a command.
+// and by reading the container's details through the socket proxy (the
+// same access the GUI already uses for nginx -t). No value from the browser
+// ever becomes part of a command.
 import { X509Certificate } from 'node:crypto';
 
-// Lowest safe version per release line, from published security advisories.
-// A version on a line not listed here is older than every line that has a
-// fix, so it is flagged too. Update this table when new advisories appear.
-export const SECURITY_FLOORS = {
-  checkedOn: '2026-11-19',
-  nginx: {
-    // NGINX2Root, CVE-2026-123007 and others (18 Nov 2026)
-    lines: { '1.30': '1.30.7', '1.31': '1.31.9' },
-    advisory: 'NGINX2Root (CVE-2026-123007 and related), fixed in 1.30.7 / 1.31.9',
-  },
-  php: {
-    // CVE-2026-109618 / CVE-2026-109619 (21 Oct 2026)
-    lines: { '8.2': '8.2.35', '8.3': '8.3.36', '8.4': '8.4.27', '8.5': '8.5.12' },
-    advisory: 'CVE-2026-109618 / CVE-2026-109619, fixed in 8.2.35 / 8.3.36 / 8.4.27 / 8.5.12',
-  },
-};
+// linuxserver.io rebuilds SWAG at least weekly. An image older than this
+// means the container hasn't been updated for a while.
+const IMAGE_WARN_DAYS = 30;
 
 // Where SWAG keeps its certificate (a link to the current Let's Encrypt or
 // ZeroSSL certificate)
@@ -34,28 +26,25 @@ export const RENEW_SCRIPT = '/app/le-renew.sh';
 // have probably been failing for a while.
 const CERT_WARN_DAYS = 21;
 
-export function compareVersions(a, b) {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d !== 0) return Math.sign(d);
-  }
-  return 0;
-}
-
-// { version, ok, fixedIn } for a version string, judged against the floors
-export function judgeVersion(kind, version) {
-  if (!version) return { version: null, ok: null, fixedIn: null };
-  const floors = SECURITY_FLOORS[kind].lines;
-  const line = version.split('.').slice(0, 2).join('.');
-  const fixedIn = floors[line];
-  if (fixedIn) return { version, ok: compareVersions(version, fixedIn) >= 0, fixedIn };
-  // A line newer than every listed one is fine. An older one is not; the
-  // oldest fixed version is the smallest upgrade that fixes it.
-  const lines = Object.keys(floors).sort(compareVersions);
-  const ok = compareVersions(line, lines.at(-1)) > 0;
-  return { version, ok, fixedIn: ok ? null : floors[lines[0]] };
+// The SWAG image a container runs, from its details (docker inspect).
+// linuxserver.io images carry their version and build date as labels.
+export function parseImage(details, now = new Date()) {
+  const labels = details?.Config?.Labels ?? {};
+  const version = labels['org.opencontainers.image.version']
+    ?? labels.build_version?.match(/version:-\s*(\S+)/)?.[1]
+    ?? null;
+  const builtRaw = labels['org.opencontainers.image.created']
+    ?? labels.build_version?.match(/Build-date:-\s*(\S+)/)?.[1]
+    ?? null;
+  const built = builtRaw && !Number.isNaN(Date.parse(builtRaw)) ? new Date(builtRaw) : null;
+  const ageDays = built ? Math.floor((now - built) / 86_400_000) : null;
+  return {
+    reference: details?.Config?.Image ?? null,
+    version,
+    built: built?.toISOString() ?? null,
+    ageDays,
+    state: ageDays === null ? 'unknown' : ageDays > IMAGE_WARN_DAYS ? 'old' : 'ok',
+  };
 }
 
 export function parseNginxVersion(output) {
@@ -102,8 +91,9 @@ export function parseCertificate(pem, now = new Date()) {
 }
 
 // Collects everything with fixed commands. `run(cmd)` resolves to
-// { stdout, stderr, exitCode } (docker exec in the SWAG container).
-export async function collect(run) {
+// { stdout, stderr, exitCode } (docker exec in the SWAG container);
+// `inspect()` resolves to the container's details.
+export async function collect(run, inspect = async () => null) {
   const safe = async (cmd) => {
     try {
       return await run(cmd);
@@ -112,7 +102,8 @@ export async function collect(run) {
     }
   };
 
-  const [nginxV, phpV, nginxT, cert, renew] = await Promise.all([
+  const [details, nginxV, phpV, nginxT, cert, renew] = await Promise.all([
+    inspect().catch(() => null),
     safe(['nginx', '-v']),
     safe(['php', '-v']),
     safe(['nginx', '-T']),
@@ -133,9 +124,9 @@ export async function collect(run) {
   }
 
   return {
-    checkedAgainst: SECURITY_FLOORS.checkedOn,
-    nginx: { ...judgeVersion('nginx', parseNginxVersion(nginxV.stdout + nginxV.stderr)), advisory: SECURITY_FLOORS.nginx.advisory },
-    php: { ...judgeVersion('php', parsePhpVersion(phpV.stdout)), advisory: SECURITY_FLOORS.php.advisory },
+    image: parseImage(details),
+    nginx: parseNginxVersion(nginxV.stdout + nginxV.stderr),
+    php: parsePhpVersion(phpV.stdout),
     protocols: nginxT.exitCode === 0 ? parseProtocols(nginxT.stdout + nginxT.stderr) : null,
     certificate,
     certError,

@@ -17,27 +17,21 @@ BggqhkjOPQQDAgNJADBGAiEAjgZseWsRbkNQORYZ4YrEur4IEVwdNMaX71YMmQLL
 184CIQD+oX8AJ01JXT49D2Dbq81okbpcexfq/5tGmzvCNNHMMw==
 -----END CERTIFICATE-----`;
 
-test('compares version numbers', () => {
-  assert.equal(status.compareVersions('1.30.7', '1.30.7'), 0);
-  assert.equal(status.compareVersions('1.30.10', '1.30.7'), 1);
-  assert.equal(status.compareVersions('1.29.9', '1.30.0'), -1);
-});
-
-test('flags nginx versions older than the security fix', () => {
-  assert.deepEqual(status.judgeVersion('nginx', '1.30.6'), { version: '1.30.6', ok: false, fixedIn: '1.30.7' });
-  assert.equal(status.judgeVersion('nginx', '1.30.7').ok, true);
-  assert.equal(status.judgeVersion('nginx', '1.31.8').ok, false);
-  assert.equal(status.judgeVersion('nginx', '1.31.9').ok, true);
-  assert.deepEqual(status.judgeVersion('nginx', '1.28.0'), { version: '1.28.0', ok: false, fixedIn: '1.30.7' }, 'older lines are flagged, with the smallest fixing upgrade');
-  assert.equal(status.judgeVersion('nginx', '1.32.0').ok, true, 'newer lines are fine');
-  assert.deepEqual(status.judgeVersion('nginx', null), { version: null, ok: null, fixedIn: null });
-});
-
-test('flags PHP versions older than the security fix', () => {
-  assert.equal(status.judgeVersion('php', '8.4.26').ok, false);
-  assert.equal(status.judgeVersion('php', '8.4.27').ok, true);
-  assert.equal(status.judgeVersion('php', '8.3.40').ok, true);
-  assert.equal(status.judgeVersion('php', '8.1.31').ok, false);
+test('reads the SWAG image version and age from its labels', () => {
+  const now = new Date('2026-11-20T00:00:00Z');
+  const oci = { Config: { Image: 'lscr.io/linuxserver/swag:latest', Labels: {
+    'org.opencontainers.image.version': '5.10.0-ls501',
+    'org.opencontainers.image.created': '2026-11-18T18:05:00+00:00',
+  } } };
+  assert.deepEqual(status.parseImage(oci, now), {
+    reference: 'lscr.io/linuxserver/swag:latest', version: '5.10.0-ls501',
+    built: '2026-11-18T18:05:00.000Z', ageDays: 1, state: 'ok',
+  });
+  const legacy = { Config: { Image: 'swag', Labels: { build_version: 'Linuxserver.io version:- 5.2.2-ls425 Build-date:- 2026-08-01T00:00:00+00:00' } } };
+  const old = status.parseImage(legacy, now);
+  assert.equal(old.version, '5.2.2-ls425');
+  assert.equal(old.state, 'old', 'over 30 days old');
+  assert.deepEqual(status.parseImage(null, now), { reference: null, version: null, built: null, ageDays: null, state: 'unknown' });
 });
 
 test('reads versions from command output', () => {
@@ -75,11 +69,11 @@ test('collects everything with fixed commands only', async () => {
     if (cmd[0] === 'cat') return { stdout: PEM, stderr: '', exitCode: 0 };
     throw new Error('exec failed');
   };
-  const s = await status.collect(run);
+  const s = await status.collect(run, async () => ({ Config: { Image: 'swag', Labels: { 'org.opencontainers.image.version': '5.10.0-ls501' } } }));
   assert.deepEqual(seen.sort(), ['cat /config/keys/letsencrypt/fullchain.pem', 'nginx -T', 'nginx -v', 'php -v', 'test -x /app/le-renew.sh']);
-  assert.equal(s.nginx.ok, false);
-  assert.equal(s.nginx.fixedIn, '1.30.7');
-  assert.equal(s.php.ok, true);
+  assert.equal(s.image.version, '5.10.0-ls501');
+  assert.equal(s.nginx, '1.30.6');
+  assert.equal(s.php, '8.4.27');
   assert.deepEqual(s.protocols, { http2: true, http3: false });
   assert.equal(s.certificate.domains[0], 'example.test');
   assert.equal(s.canRenew, false, 'a failing exec is reported, not thrown');

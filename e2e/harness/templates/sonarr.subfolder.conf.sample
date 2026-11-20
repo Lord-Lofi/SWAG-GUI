@@ -1,0 +1,17 @@
+## Version 2024/07/16
+# make sure that your sonarr container is named sonarr
+
+location ^~ /sonarr {
+    # enable for Authelia, also enable authelia-server.conf in the default site config
+    #include /config/nginx/authelia-location.conf;
+
+    # enable for Authentik, also enable authentik-server.conf in the default site config
+    #include /config/nginx/authentik-location.conf;
+
+    include /config/nginx/proxy.conf;
+    include /config/nginx/resolver.conf;
+    set $upstream_app sonarr;
+    set $upstream_port 8989;
+    set $upstream_proto http;
+    proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+}

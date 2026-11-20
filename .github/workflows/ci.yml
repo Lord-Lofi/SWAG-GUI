@@ -73,3 +73,56 @@ jobs:
             echo "::error::A real BREAKGLASS_PASSWORD_HASH is committed. Remove it and make a new password."
             exit 1
           fi
+
+  # Browser tests: clicks through the real UI against a throwaway SWAG-like
+  # folder, with a real `nginx -t` on every generated config (see
+  # e2e/playwright.config.js). Playwright lives in e2e/ with its own package
+  # list, so it never ends up in the app's container.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            e2e/package-lock.json
+
+      - name: Install the app and build the frontend
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+
+      - name: Install nginx (the tests run the real nginx -t)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q nginx
+          sudo systemctl stop nginx || true
+
+      - name: Install Playwright and Chromium
+        working-directory: e2e
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run the browser tests
+        working-directory: e2e
+        run: npm test
+
+      - name: Keep the test report if something failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
+

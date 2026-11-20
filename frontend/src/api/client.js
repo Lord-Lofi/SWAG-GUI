@@ -40,6 +40,12 @@ export const api = {
     preview:  (id, name, values) => request('POST', `/instances/${id}/templates/${encodeURIComponent(name)}/preview`, values),
     activate: (id, name, values) => request('POST', `/instances/${id}/templates/${encodeURIComponent(name)}/activate`, values),
   },
+  history: {
+    files:    (id)                => request('GET',  `/instances/${id}/history`),
+    versions: (id, name)          => request('GET',  `/instances/${id}/history/${encodeURIComponent(name)}`),
+    read:     (id, name, version) => request('GET',  `/instances/${id}/history/${encodeURIComponent(name)}/${encodeURIComponent(version)}`),
+    restore:  (id, name, version) => request('POST', `/instances/${id}/history/${encodeURIComponent(name)}/${encodeURIComponent(version)}/restore`),
+  },
   status: {
     get:   (id) => request('GET',  `/instances/${id}/status`),
     renew: (id) => request('POST', `/instances/${id}/status/renew`),

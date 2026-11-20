@@ -6,6 +6,7 @@ import * as errorPages from '../lib/errorPages.js';
 import * as templates from '../lib/templates.js';
 import * as features from '../lib/features.js';
 import * as status from '../lib/status.js';
+import * as history from '../lib/history.js';
 
 const router = Router();
 
@@ -42,9 +43,10 @@ function getInstance(id) {
 //
 // `previous` is the file's old content, or undefined for a new file. If
 // nginx -t fails, a new file is removed and a changed file gets its old
-// content back, so a bad change never stays behind. If it passes, nginx is
-// reloaded.
-async function saveAndReload(instance, name, content, previous) {
+// content back, so a bad change never stays behind. If it passes, the old
+// content is kept in the file history (`action` says what changed it) and
+// nginx is reloaded.
+async function saveAndReload(instance, name, content, previous, action = 'edit') {
   if (previous === undefined) {
     await confFiles.create(instance.confsPath, name, content);
   } else {
@@ -62,6 +64,7 @@ async function saveAndReload(instance, name, content, previous) {
     return { status: 422, body: { error: `nginx -t failed, so ${name} ${undone}`, ...validation } };
   }
 
+  if (previous !== undefined) await history.record(instance.confsPath, name, previous, action);
   const reload = await docker.nginxReload(instance.container);
   return {
     status: previous === undefined ? 201 : 200,
@@ -123,7 +126,7 @@ router.patch('/:id/confs/:name/features', async (req, res) => {
   if (changes.errorPages && !(await errorPages.status(instance.confsPath)).upToDate) {
     await errorPages.install(instance.confsPath);
   }
-  const result = await saveAndReload(instance, name, content, previous);
+  const result = await saveAndReload(instance, name, content, previous, 'setting');
   res.status(result.status).json(result.body);
 });
 
@@ -153,10 +156,61 @@ router.put('/:id/confs/:name', async (req, res) => {
 });
 
 // DELETE /api/instances/:id/confs/:name
+// The deleted file's content is kept in the history, so it can be restored.
+// nginx is then reloaded, so the host actually stops being served (if
+// nginx -t fails for another reason, the reload is skipped and reported).
 router.delete('/:id/confs/:name', async (req, res) => {
   const instance = getInstance(req.params.id);
+  const content = await confFiles.read(instance.confsPath, req.params.name);
   await confFiles.remove(instance.confsPath, req.params.name);
-  res.json({ ok: true });
+  await history.record(instance.confsPath, req.params.name, content, 'delete');
+  const validation = await docker.nginxValidate(instance.container);
+  if (!validation.ok) {
+    return res.json({ ok: true, reloaded: false, output: validation.output });
+  }
+  const reload = await docker.nginxReload(instance.container);
+  res.json({ ok: true, reloaded: reload.ok, output: reload.output });
+});
+
+// GET /api/instances/:id/history — every file with earlier versions, and
+// whether it still exists (deleted files can be restored)
+router.get('/:id/history', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  const active = new Set((await confFiles.list(instance.confsPath)).map((c) => c.name));
+  const files = await history.files(instance.confsPath);
+  res.json(files.map((f) => ({ ...f, exists: active.has(f.name) })));
+});
+
+// GET /api/instances/:id/history/:name — a file's versions, newest first
+router.get('/:id/history/:name', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  res.json(await history.versions(instance.confsPath, req.params.name));
+});
+
+// GET /api/instances/:id/history/:name/:version — one version's content
+router.get('/:id/history/:name/:version', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  res.json({ content: await history.read(instance.confsPath, req.params.name, req.params.version) });
+});
+
+// POST /api/instances/:id/history/:name/:version/restore — puts an earlier
+// version back (or brings back a deleted file). Same safety as any change:
+// nginx -t first, and the current content goes into the history, so a
+// restore can itself be undone.
+router.post('/:id/history/:name/:version/restore', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  const name = req.params.name;
+  if (templates.isTemplate(name) || !name.endsWith('.conf')) {
+    throw Object.assign(new Error('Only active .conf files can be restored'), { status: 400 });
+  }
+  const content = await history.read(instance.confsPath, name, req.params.version);
+  const current = await confFiles.read(instance.confsPath, name).catch((err) => {
+    if (err.code === 'ENOENT') return undefined;
+    throw err;
+  });
+  if (current === content) return res.json({ ok: true, name, unchanged: true });
+  const result = await saveAndReload(instance, name, content, current, 'restore');
+  res.status(result.status).json({ ...result.body, restored: name });
 });
 
 // POST /api/instances/:id/hosts/preview — shows the config a new host would
@@ -219,7 +273,7 @@ router.put('/:id/hosts/:name', async (req, res) => {
     await errorPages.install(instance.confsPath);
   }
 
-  const result = await saveAndReload(instance, req.params.name, renderHostConf(host), previous);
+  const result = await saveAndReload(instance, req.params.name, renderHostConf(host), previous, 'form');
   res.status(result.status).json({ ...result.body, updated: req.params.name });
 });
 

@@ -7,7 +7,7 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 ## Features
 
 - **Proxy conf manager** — list, switch and delete active `.conf` files per instance; everyday changes go through forms, not file editing
-- **Add and edit proxy hosts** — a form for `<name>.subdomain.conf` files (upstream, port, sign-in with Authelia or Authentik, allow list) with a live preview. Hosts made with the form open in the form again for changes, as long as nobody edited the file by hand. A failed `nginx -t` undoes the change
+- **Add and edit proxy hosts** — a form for `<name>.subdomain.conf` files (upstream, port, sign-in with Authelia or Authentik, allow list, upload size limit) with a live preview. **Duplicate** starts a new host with the same settings; changing the subdomain while editing renames the host. Hosts made with the form open in the form again for changes, as long as nobody edited the file by hand. A failed `nginx -t` undoes the change
 - **Settings per config** — choose the sign-in (Authelia, Authentik or none) and switch the friendly error pages on or off for any active config, including ones activated from templates; only those include lines change
 - **Status panel** — per instance: the SWAG image's version and age (with the nginx and PHP versions inside it), whether HTTP/2 and HTTP/3 are on, and the certificate's domains and expiry, with a button to run SWAG's renewal check
 - **File history and undo** — every change made through the GUI keeps the previous version (20 per file, deleted files included); compare any version with the current file side by side and restore it, with the same `nginx -t` safety as any change

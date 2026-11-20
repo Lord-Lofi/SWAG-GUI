@@ -4,7 +4,25 @@ import { api } from '../api/client.js';
 const EMPTY = {
   subdomain: '', upstreamApp: '', upstreamPort: '', upstreamProto: 'http',
   auth: 'authelia', errorPages: true, access: 'anyone', allowText: '',
+  upload: '0', uploadAmount: '', uploadUnit: 'm',
 };
+
+// Upload size limit presets (nginx client_max_body_size). Unlimited is the
+// default, as in SWAG's own templates; "custom" takes any whole MB or GB.
+const UPLOAD_PRESETS = [
+  ['0', 'Unlimited'],
+  ['1m', '1 MB (nginx default; for apps that never take uploads)'],
+  ['10m', '10 MB'],
+  ['100m', '100 MB'],
+  ['1g', '1 GB'],
+  ['10g', '10 GB'],
+];
+
+function uploadFrom(maxBodySize = '0') {
+  if (UPLOAD_PRESETS.some(([v]) => v === maxBodySize)) return { upload: maxBodySize, uploadAmount: '', uploadUnit: 'm' };
+  const m = maxBodySize.match(/^(\d+)([mg])$/);
+  return { upload: 'custom', uploadAmount: m?.[1] ?? '', uploadUnit: m?.[2] ?? 'm' };
+}
 
 // "Local network only": private IPv4 ranges, IPv6 unique-local, and loopback
 const LAN = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.1', 'fc00::/7', '::1'];
@@ -17,19 +35,22 @@ function accessFrom(allowList = []) {
 }
 
 // What the server receives: the form fields plus the resulting allow list
-function toHost({ access, allowText, ...host }) {
+// and upload size
+function toHost({ access, allowText, upload, uploadAmount, uploadUnit, ...host }) {
   const allowList = access === 'lan' ? LAN : access === 'custom' ? allowText.split(/[\s,]+/).filter(Boolean) : [];
-  return { ...host, allowList };
+  const maxBodySize = upload === 'custom' ? `${uploadAmount.trim()}${uploadUnit}` : upload;
+  return { ...host, allowList, maxBodySize };
 }
 
 // Form for a proxy host: a new one, or (with editName) one made with this
-// form earlier. Shows the exact .conf that will be written (rendered by the
+// form earlier. Changing the subdomain of an existing host renames it.
+// `initial` without editName pre-fills a new host (Duplicate). Shows the exact .conf that will be written (rendered by the
 // server, so preview and result can never differ) and keeps it only if
 // nginx -t passes.
 export default function HostModal({ instanceId, instanceLabel, editName, initial, onSaved, onClose }) {
   const editing = Boolean(editName);
   const [form, setForm]         = useState(() => (initial
-    ? { ...EMPTY, ...initial, upstreamPort: String(initial.upstreamPort), ...accessFrom(initial.allowList) }
+    ? { ...EMPTY, ...initial, upstreamPort: String(initial.upstreamPort), ...accessFrom(initial.allowList), ...uploadFrom(initial.maxBodySize) }
     : EMPTY));
   const [preview, setPreview]   = useState(null);
   const [problem, setProblem]   = useState(null);
@@ -90,8 +111,13 @@ export default function HostModal({ instanceId, instanceLabel, editName, initial
           <div className="md:w-72 shrink-0 flex flex-col gap-3">
             <div>
               <label className={label} htmlFor="subdomain">Subdomain</label>
-              <input id="subdomain" className={input} placeholder="plex" value={form.subdomain} onChange={set('subdomain')} disabled={editing} autoFocus={!editing} />
+              <input id="subdomain" className={input} placeholder="plex" value={form.subdomain} onChange={set('subdomain')} autoFocus={!editing} />
               <p className="text-[11px] text-gray-600 mt-1">Serves <span className="font-mono">{form.subdomain.trim().toLowerCase() || 'name'}.yourdomain</span></p>
+              {editing && form.subdomain.trim().toLowerCase() !== initial.subdomain && form.subdomain.trim() !== '' && (
+                <p className="text-[11px] text-amber-300/80 mt-1">
+                  Renames the host: <span className="font-mono">{editName}</span> is replaced by <span className="font-mono">{form.subdomain.trim().toLowerCase()}.subdomain.conf</span> once nginx -t passes. Update your DNS if needed.
+                </p>
+              )}
             </div>
             <div>
               <label className={label} htmlFor="upstreamApp">Upstream container or host</label>
@@ -126,6 +152,23 @@ export default function HostModal({ instanceId, instanceLabel, editName, initial
                 <span className="block text-[11px] text-gray-600">Shown when the service is down or access is denied. Installed automatically if needed.</span>
               </span>
             </label>
+            <div className="mt-1">
+              <label className={label} htmlFor="upload">Upload size limit</label>
+              <select id="upload" className={input} value={form.upload} onChange={set('upload')}>
+                {UPLOAD_PRESETS.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
+                <option value="custom">Custom…</option>
+              </select>
+              {form.upload === 'custom' && (
+                <div className="flex gap-2 mt-2">
+                  <input aria-label="Upload size" className={input} inputMode="numeric" placeholder="500" value={form.uploadAmount} onChange={set('uploadAmount')} />
+                  <select aria-label="Upload size unit" className={`${input} w-20`} value={form.uploadUnit} onChange={set('uploadUnit')}>
+                    <option value="m">MB</option>
+                    <option value="g">GB</option>
+                  </select>
+                </div>
+              )}
+              <p className="text-[11px] text-gray-600 mt-1">Largest request (e.g. a file upload) this app accepts. Unlimited suits file and photo apps; a small limit protects apps that never take uploads.</p>
+            </div>
             <div className="mt-1">
               <label className={label} htmlFor="access">Who can connect</label>
               <select id="access" className={input} value={form.access} onChange={set('access')}>

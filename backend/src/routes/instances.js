@@ -259,22 +259,36 @@ router.get('/:id/hosts/:name', async (req, res) => {
 });
 
 // PUT /api/instances/:id/hosts/:name — saves form changes to an existing
-// host. The subdomain can't change (that would be a different file). If
-// nginx -t fails, the file gets its old content back.
+// host. If nginx -t fails, the file gets its old content back.
+//
+// A different subdomain renames the host: the new file is created and
+// checked with nginx -t first, and only then is the old file removed (its
+// last content goes into the history). If the check fails, the new file is
+// removed and the old one is left as it was.
 router.put('/:id/hosts/:name', async (req, res) => {
   const instance = getInstance(req.params.id);
-  const { content: previous } = await loadManagedHost(instance, req.params.name);
+  const oldName = req.params.name;
+  const { content: previous } = await loadManagedHost(instance, oldName);
   const host = validateHost(req.body);
-  if (fileNameFor(host.subdomain) !== req.params.name) {
-    throw Object.assign(new Error('subdomain: the subdomain of an existing host can\'t be changed'), { status: 400, field: 'subdomain' });
-  }
+  const newName = fileNameFor(host.subdomain);
 
   if (host.errorPages && !(await errorPages.status(instance.confsPath)).upToDate) {
     await errorPages.install(instance.confsPath);
   }
 
-  const result = await saveAndReload(instance, req.params.name, renderHostConf(host), previous, 'form');
-  res.status(result.status).json({ ...result.body, updated: req.params.name });
+  if (newName === oldName) {
+    const result = await saveAndReload(instance, oldName, renderHostConf(host), previous, 'form');
+    return res.status(result.status).json({ ...result.body, updated: oldName });
+  }
+
+  // Rename: create the new file (refused if it already exists), check it
+  const created = await saveAndReload(instance, newName, renderHostConf(host));
+  if (created.status !== 201) return res.status(created.status).json(created.body);
+
+  await confFiles.remove(instance.confsPath, oldName);
+  await history.record(instance.confsPath, oldName, previous, 'rename');
+  const reload = await docker.nginxReload(instance.container);
+  res.json({ ok: reload.ok, output: reload.output, renamed: oldName, updated: newName });
 });
 
 // GET /api/instances/:id/status — the SWAG image and its age, nginx and PHP

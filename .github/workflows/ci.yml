@@ -40,6 +40,18 @@ jobs:
       - name: Run backend tests
         run: npm test --workspace=backend
 
+      # The strict socket-proxy rules replace the image's template; make sure
+      # they still load in the exact socket-proxy version the compose example
+      # pins, filled in the same way the image's entrypoint does.
+      - name: Check the socket-proxy rules load in the pinned image
+        run: |
+          image=$(grep -oE 'lscr\.io/linuxserver/socket-proxy:[A-Za-z0-9._-]+' docker-compose.example.yml)
+          docker run --rm --entrypoint /bin/sh \
+            -e SWAG_EXTERNAL_CONTAINER=swag-a -e SWAG_INTERNAL_CONTAINER=swag-b \
+            -e SOCKET_PATH=/var/run/docker.sock -e LOG_LEVEL=info \
+            -v "$PWD/socket-proxy/haproxy.cfg:/templates/haproxy.cfg:ro" \
+            "$image" -c 'sed -e "s/@@BIND_PROTO@@/:2375/g" -e "s/@@TIMEOUT_CLIENT@@/10m/g" -e "s/@@TIMEOUT_SERVER@@/10m/g" /templates/haproxy.cfg > /tmp/haproxy.cfg && ! grep -n "^[^#]*@@" /tmp/haproxy.cfg && haproxy -c -f /tmp/haproxy.cfg'
+
       - name: Check the backend and entrypoint parse
         run: |
           for file in $(git ls-files 'backend/*.js' 'backend/**/*.js'); do

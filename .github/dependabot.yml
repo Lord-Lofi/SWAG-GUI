@@ -37,6 +37,16 @@ updates:
           - "minor"
           - "patch"
 
+  # Browser tests (e2e/ has its own package list, not part of the app)
+  - package-ecosystem: "npm"
+    directory: "/e2e"
+    schedule:
+      interval: "weekly"
+    groups:
+      e2e:
+        patterns:
+          - "*"
+
   # Base image in the Dockerfile
   - package-ecosystem: "docker"
     directory: "/"

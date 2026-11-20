@@ -17,6 +17,7 @@ export default function TemplateBrowser({ templates, activeNames, onActivate }) 
         return (
           <div
             key={t.name}
+            data-template={t.name}
             className="flex items-center justify-between px-4 py-3 hover:bg-gray-900 transition-colors"
           >
             <div className="min-w-0">

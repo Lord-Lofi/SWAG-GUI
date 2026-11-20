@@ -1,0 +1,12 @@
+{
+  "name": "swag-config-gui-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests for SWAG Config GUI. Not part of the app: its own package list, never installed into the container.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
+}

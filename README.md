@@ -234,6 +234,19 @@ npm run dev
 
 The Vite dev server proxies `/api` requests to the Express backend on port 3000.
 
+### Tests
+
+```bash
+npm test --workspace=backend          # unit tests (Node's built-in test runner)
+
+npm run build                         # browser tests need the built frontend
+cd e2e
+npm ci && npx playwright install chromium
+npm test
+```
+
+The browser tests (`e2e/`) click through the real UI. A small harness starts the real backend against a throwaway SWAG-like folder, with a stand-in for the socket proxy that runs a real `nginx -t` on every config the GUI writes, so they need `nginx` and `openssl` installed. Playwright has its own package list in `e2e/` and is never installed into the app's container. CI runs both on every pull request; if the browser tests fail, the run keeps a report with screenshots as a downloadable artifact.
+
 ---
 
 ## Security

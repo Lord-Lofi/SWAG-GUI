@@ -55,7 +55,7 @@ export default function ConfList({ confs, withHistory = new Set(), deleted = [],
       <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-2">Deleted files</h3>
       <ul className="rounded-sm border border-gray-800 divide-y divide-gray-800">
         {deleted.map((f) => (
-          <li key={f.name} className="flex items-center justify-between px-4 py-2">
+          <li key={f.name} data-deleted={f.name} className="flex items-center justify-between px-4 py-2">
             <span className="font-mono text-sm text-gray-500">{f.name}</span>
             <span className="flex items-center gap-3">
               <span className="text-[11px] text-gray-600">deleted {new Date(f.latest.time).toLocaleString()}</span>
@@ -89,6 +89,7 @@ export default function ConfList({ confs, withHistory = new Set(), deleted = [],
       {confs.map(conf => (
         <div
           key={conf.name}
+          data-conf={conf.name}
           className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-gray-900 transition-colors"
         >
           <span className="font-mono text-sm text-gray-200">

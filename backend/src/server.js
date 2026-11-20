@@ -44,9 +44,13 @@ function buildApp({ auth } = {}) {
   app.use(express.static(distPath));
   app.get('/{*path}', (_req, res) => res.sendFile(join(distPath, 'index.html')));
 
-  app.use((err, _req, res, _next) => {
-    console.error(err);
-    res.status(err.status ?? 500).json({ error: err.message });
+  app.use((err, req, res, _next) => {
+    const status = err.status ?? 500;
+    // Rejected input (4xx) is expected and gets one line; real errors get
+    // the full stack. JSON.stringify keeps odd characters from faking lines.
+    if (status >= 500) console.error(err);
+    else console.warn(`[server] ${status} ${req.method} ${JSON.stringify(req.path)}: ${JSON.stringify(err.message)}`);
+    res.status(status).json({ error: err.message });
   });
 
   return app;

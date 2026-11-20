@@ -80,3 +80,11 @@ export async function nginxReload(containerName) {
     exitCode,
   };
 }
+
+// A container's details (what `docker inspect` shows). The socket proxy
+// allows this read with CONTAINERS=1.
+export async function inspect(containerName) {
+  const res = await fetch(`${PROXY_URL}/containers/${encodeURIComponent(containerName)}/json`);
+  if (!res.ok) throw new Error(`Docker inspect failed (${res.status})`);
+  return res.json();
+}

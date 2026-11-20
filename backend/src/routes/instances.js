@@ -223,11 +223,14 @@ router.put('/:id/hosts/:name', async (req, res) => {
   res.status(result.status).json({ ...result.body, updated: req.params.name });
 });
 
-// GET /api/instances/:id/status — nginx and PHP versions (checked against
-// known security fixes), HTTP/2 and HTTP/3, and the certificate
+// GET /api/instances/:id/status — the SWAG image and its age, nginx and PHP
+// versions, HTTP/2 and HTTP/3, and the certificate
 router.get('/:id/status', async (req, res) => {
   const instance = getInstance(req.params.id);
-  res.json(await status.collect((cmd) => docker.exec(instance.container, cmd)));
+  res.json(await status.collect(
+    (cmd) => docker.exec(instance.container, cmd),
+    () => docker.inspect(instance.container),
+  ));
 });
 
 // POST /api/instances/:id/status/renew — runs SWAG's own renewal script now.

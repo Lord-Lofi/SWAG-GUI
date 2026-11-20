@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client.js';
 
-// Health of one SWAG instance: software versions against known security
-// fixes, HTTP/2 / HTTP/3, and the certificate. Read-only, except for the
-// renewal check, which runs SWAG's own renewal script.
+// Health of one SWAG instance: the SWAG image and its age (nginx, PHP and
+// certbot only update with a new image), HTTP/2 / HTTP/3, and the
+// certificate. Read-only, except for the renewal check, which runs SWAG's
+// own renewal script.
 const TONE = {
   ok:      'border-green-900 bg-green-950/40 text-green-300',
   warning: 'border-amber-800 bg-amber-950/40 text-amber-300',
@@ -20,23 +21,28 @@ function Card({ title, tone = 'unknown', children }) {
   );
 }
 
-function VersionCard({ name, info, checkedAgainst }) {
-  const tone = info.ok === null ? 'unknown' : info.ok ? 'ok' : 'bad';
+function ImageCard({ image, nginx, php }) {
+  const tone = image.state === 'ok' ? 'ok' : image.state === 'old' ? 'warning' : 'unknown';
   return (
-    <Card title={name} tone={tone}>
-      {info.version === null ? (
-        <p className="text-gray-400">Not found in this container.</p>
-      ) : (
-        <>
-          <p className="font-mono text-lg">{info.version}</p>
-          <p className="text-xs mt-1">
-            {info.ok
-              ? `Includes the latest known security fixes (as of ${checkedAgainst}).`
-              : `Vulnerable: update to ${info.fixedIn} or newer. Pull the latest SWAG image and recreate the container.`}
-          </p>
-          <p className="text-[11px] text-gray-500 mt-1">{info.advisory}</p>
-        </>
+    <Card title="SWAG image" tone={tone}>
+      <p className="font-mono text-lg">{image.version ?? 'Unknown version'}</p>
+      {image.built && (
+        <p className="text-xs mt-1">
+          Built {new Date(image.built).toLocaleDateString()} ({image.ageDays === 0 ? 'today' : `${image.ageDays} day${image.ageDays === 1 ? '' : 's'} ago`})
+        </p>
       )}
+      {image.state === 'old' && (
+        <p className="text-xs mt-1">
+          linuxserver.io rebuilds SWAG at least weekly, and security fixes for nginx and PHP arrive that way. This one is over a month old.
+        </p>
+      )}
+      <p className="text-xs text-gray-400 mt-2">
+        nginx <span className="font-mono">{nginx ?? 'not found'}</span> · PHP <span className="font-mono">{php ?? 'not found'}</span>
+      </p>
+      {image.reference && <p className="font-mono text-[11px] text-gray-500 mt-1 break-all">{image.reference}</p>}
+      <p className="text-[11px] text-gray-500 mt-2">
+        To update: <span className="font-mono">docker compose pull swag &amp;&amp; docker compose up -d swag</span>
+      </p>
     </Card>
   );
 }
@@ -90,12 +96,8 @@ export default function StatusPanel({ instanceId }) {
 
   return (
     <div className="mt-2 flex flex-col gap-3">
-      <div className="grid gap-3 md:grid-cols-2">
-        <VersionCard name="nginx" info={data.nginx} checkedAgainst={data.checkedAgainst} />
-        <VersionCard name="PHP" info={data.php} checkedAgainst={data.checkedAgainst} />
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
+        <ImageCard image={data.image} nginx={data.nginx} php={data.php} />
         <Card title="Protocols" tone={p ? 'unknown' : 'warning'}>
           {p ? (
             <ul className="space-y-1">

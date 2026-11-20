@@ -10,6 +10,7 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 - **Add and edit proxy hosts** — a form for `<name>.subdomain.conf` files (upstream, port, sign-in with Authelia or Authentik, allow list) with a live preview. Hosts made with the form open in the form again for changes, as long as nobody edited the file by hand. A failed `nginx -t` undoes the change
 - **Settings per config** — choose the sign-in (Authelia, Authentik or none) and switch the friendly error pages on or off for any active config, including ones activated from templates; only those include lines change
 - **Status panel** — per instance: the SWAG image's version and age (with the nginx and PHP versions inside it), whether HTTP/2 and HTTP/3 are on, and the certificate's domains and expiry, with a button to run SWAG's renewal check
+- **File history and undo** — every change made through the GUI keeps the previous version (20 per file, deleted files included); compare any version with the current file side by side and restore it, with the same `nginx -t` safety as any change
 - **Allow lists** — limit a host to your local network or to a list of IP addresses and ranges; everyone else gets a 403 (with the friendly page if error pages are on)
 - **Friendly error pages** — matching 403 / 404 / service-down pages (no scripts, no outside requests); one click installs them, and new hosts include them by default
 - **Template browser** — browse Linuxserver.io's `.conf.sample` library; activating one asks for the container name, port and subdomain (filled in with the template's defaults) and shows the resulting file first
@@ -178,6 +179,18 @@ The **Status** tab reads each instance's health by running fixed commands inside
 - **SWAG image** shows the image version and when it was built. nginx, PHP and certbot inside SWAG are only updated by pulling a newer image, and linuxserver.io rebuilds SWAG at least weekly, so an image over 30 days old turns amber. To update: `docker compose pull swag && docker compose up -d swag`.
 - **Protocols** shows whether HTTP/2 or HTTP/3 is switched on anywhere, which matters when an nginx flaw only affects one of them.
 - **Certificate** shows the domains, issuer and expiry. Certbot renews with 30 days left, so under 21 days it turns amber: renewal is probably failing. **Run renewal check** runs SWAG's own `/app/le-renew.sh`; it only renews when due, so it's safe to press any time.
+
+## File history
+
+Before SWAG Config GUI changes or deletes a config, it keeps the old content in a hidden folder next to the configs:
+
+```
+proxy-confs/.swag-gui-history/<file name>/<date and time>__<what changed it>.conf
+```
+
+SWAG doesn't load anything from that folder (it only loads `*.subdomain.conf` and `*.subfolder.conf` files directly in `proxy-confs`), and because it sits on the same volume, your normal backups of `proxy-confs` include it. The newest 20 versions per file are kept.
+
+**History** on a config opens its versions: pick one to compare it with the current file, then **Restore this version**. Deleted files with history appear under **Deleted files** at the bottom of the list. A restore runs `nginx -t` like any change, and the version it replaces goes into the history, so a restore can be undone too. Changes made outside the GUI (by hand on the server) aren't recorded.
 
 ## Allow lists
 

@@ -2,7 +2,8 @@
 // none) and an error-pages switch, greyed out when the file has no place
 // for them. Hosts made with
 // the form have Edit, which reopens the form; "Edit file" is the advanced
-// option for changing any file by hand.
+// option for changing any file by hand. "History" lists earlier versions,
+// and deleted files with history are listed at the bottom to restore.
 const PROVIDER_NAMES = { authelia: 'Authelia', authentik: 'Authentik' };
 
 // Sign-in for one config. Only offers the providers the file has lines for.
@@ -48,16 +49,42 @@ function Switch({ label, state, title, onChange }) {
   );
 }
 
-export default function ConfList({ confs, onEdit, onEditFile, onDelete, onSetting }) {
+export default function ConfList({ confs, withHistory = new Set(), deleted = [], onEdit, onEditFile, onDelete, onSetting, onHistory }) {
+  const deletedList = deleted.length > 0 && (
+    <section className="mt-6">
+      <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-2">Deleted files</h3>
+      <ul className="rounded-sm border border-gray-800 divide-y divide-gray-800">
+        {deleted.map((f) => (
+          <li key={f.name} className="flex items-center justify-between px-4 py-2">
+            <span className="font-mono text-sm text-gray-500">{f.name}</span>
+            <span className="flex items-center gap-3">
+              <span className="text-[11px] text-gray-600">deleted {new Date(f.latest.time).toLocaleString()}</span>
+              <button
+                onClick={() => onHistory(f.name, false)}
+                className="px-3 py-1 rounded-sm text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700"
+              >
+                View / restore
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+
   if (confs.length === 0) {
     return (
-      <p className="text-gray-600 text-sm mt-6 text-center">
-        No active configs found. Use the Templates tab to activate one.
-      </p>
+      <>
+        <p className="text-gray-600 text-sm mt-6 text-center">
+          No active configs found. Use the Templates tab to activate one.
+        </p>
+        {deletedList}
+      </>
     );
   }
 
   return (
+    <>
     <div className="mt-2 rounded-sm border border-gray-800 divide-y divide-gray-800">
       {confs.map(conf => (
         <div
@@ -91,6 +118,15 @@ export default function ConfList({ confs, onEdit, onEditFile, onDelete, onSettin
               >
                 Edit file
               </button>
+              {withHistory.has(conf.name) && (
+                <button
+                  onClick={() => onHistory(conf.name)}
+                  title="Earlier versions of this file: compare and restore"
+                  className="px-2 py-1 text-xs text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline"
+                >
+                  History
+                </button>
+              )}
               {conf.managed && (
                 <button
                   onClick={() => onEdit(conf.name)}
@@ -101,7 +137,7 @@ export default function ConfList({ confs, onEdit, onEditFile, onDelete, onSettin
               )}
               <button
                 onClick={() => {
-                  if (window.confirm(`Delete ${conf.name}?\n\nThis cannot be undone.`)) {
+                  if (window.confirm(`Delete ${conf.name}?\n\nYou can bring it back later from "Deleted files" at the bottom of this list.`)) {
                     onDelete(conf.name);
                   }
                 }}
@@ -114,5 +150,7 @@ export default function ConfList({ confs, onEdit, onEditFile, onDelete, onSettin
         </div>
       ))}
     </div>
+    {deletedList}
+    </>
   );
 }

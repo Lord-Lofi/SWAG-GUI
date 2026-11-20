@@ -9,6 +9,8 @@ import { api } from './api/client.js';
 
 // The editor (Monaco, several MB) only downloads when "Edit file" is used
 const EditorModal = lazy(() => import('./components/EditorModal.jsx'));
+// History brings in Monaco's diff view, so it loads only when opened too
+const HistoryModal = lazy(() => import('./components/HistoryModal.jsx'));
 
 // SWAG Config GUI's own snippet; managed with the "Error pages" button
 const OWN_FILES = new Set(['errorpages.conf']);
@@ -22,6 +24,8 @@ export default function App() {
   const [status, setStatus]             = useState(null);
   const [loading, setLoading]           = useState(false);
   const [hostForm, setHostForm]         = useState(null); // { editName?, initial? }
+  const [historyFiles, setHistoryFiles] = useState([]);
+  const [historyOf, setHistoryOf]       = useState(null); // { name, exists }
   const [activating, setActivating]     = useState(null);
 
   useEffect(() => {
@@ -35,7 +39,12 @@ export default function App() {
     if (!activeInstance) return;
     setLoading(true);
     try {
-      setConfs(await api.confs.list(activeInstance));
+      const [list, hist] = await Promise.all([
+        api.confs.list(activeInstance),
+        api.history.files(activeInstance).catch(() => []),
+      ]);
+      setConfs(list);
+      setHistoryFiles(hist);
     } finally {
       setLoading(false);
     }
@@ -101,9 +110,24 @@ export default function App() {
     refreshConfs();
   }
 
+  function handleRestored(result) {
+    setHistoryOf(null);
+    setStatus({
+      type: result.ok ? 'success' : 'error',
+      message: result.unchanged
+        ? `${result.name} already matches that version.`
+        : result.ok
+          ? `Restored ${result.restored} and reloaded nginx. The version it replaced is in its history.`
+          : `Restored ${result.restored}, but the reload failed:\n\n${result.output}`,
+    });
+    refreshConfs();
+  }
+
   async function handleDelete(name) {
-    await api.confs.remove(activeInstance, name);
-    setStatus({ type: 'success', message: `Removed: ${name}` });
+    const r = await api.confs.remove(activeInstance, name);
+    setStatus(r.reloaded
+      ? { type: 'success', message: `Deleted ${name} and reloaded nginx. It can be restored from "Deleted files".` }
+      : { type: 'error', message: `Deleted ${name}, but nginx was not reloaded, so it may still be served:\n\n${r.output}` });
     refreshConfs();
   }
 
@@ -238,6 +262,9 @@ export default function App() {
         ) : view === 'confs' ? (
           <ConfList
             confs={confs.filter(c => !c.isSample && !OWN_FILES.has(c.name))}
+            withHistory={new Set(historyFiles.filter(f => f.exists).map(f => f.name))}
+            deleted={historyFiles.filter(f => !f.exists && !OWN_FILES.has(f.name))}
+            onHistory={(name, exists = true) => setHistoryOf({ name, exists })}
             onEdit={handleEdit}
             onEditFile={handleEditFile}
             onDelete={handleDelete}
@@ -271,6 +298,18 @@ export default function App() {
           onActivated={handleActivated}
           onClose={() => setActivating(null)}
         />
+      )}
+
+      {historyOf && (
+        <Suspense fallback={<div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 text-sm text-gray-400">Loading history…</div>}>
+          <HistoryModal
+            instanceId={activeInstance}
+            name={historyOf.name}
+            exists={historyOf.exists}
+            onRestored={handleRestored}
+            onClose={() => setHistoryOf(null)}
+          />
+        </Suspense>
       )}
 
       {editTarget && (

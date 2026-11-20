@@ -23,7 +23,9 @@ function parseDockerStream(buffer) {
   return { stdout, stderr };
 }
 
-async function exec(containerName, cmd) {
+// Runs a fixed command inside a container. Callers pass a constant argument
+// list; nothing from a request ever becomes part of it.
+export async function exec(containerName, cmd) {
   // Step 1: create exec instance
   const createRes = await fetch(`${PROXY_URL}/containers/${encodeURIComponent(containerName)}/exec`, {
     method: 'POST',

@@ -9,6 +9,7 @@ A self-updating, browser-based configuration manager for [Linuxserver.io SWAG](h
 - **Proxy conf manager** — list, switch and delete active `.conf` files per instance; everyday changes go through forms, not file editing
 - **Add and edit proxy hosts** — a form for `<name>.subdomain.conf` files (upstream, port, sign-in with Authelia or Authentik, allow list) with a live preview. Hosts made with the form open in the form again for changes, as long as nobody edited the file by hand. A failed `nginx -t` undoes the change
 - **Settings per config** — choose the sign-in (Authelia, Authentik or none) and switch the friendly error pages on or off for any active config, including ones activated from templates; only those include lines change
+- **Status panel** — per instance: nginx and PHP versions checked against known security fixes, whether HTTP/2 and HTTP/3 are on, and the certificate's domains and expiry, with a button to run SWAG's renewal check
 - **Allow lists** — limit a host to your local network or to a list of IP addresses and ranges; everyone else gets a 403 (with the friendly page if error pages are on)
 - **Friendly error pages** — matching 403 / 404 / service-down pages (no scripts, no outside requests); one click installs them, and new hosts include them by default
 - **Template browser** — browse Linuxserver.io's `.conf.sample` library; activating one asks for the container name, port and subdomain (filled in with the template's defaults) and shows the resulting file first
@@ -169,6 +170,14 @@ Hosts, templates and existing configs can require **Authelia** or **Authentik** 
 - **Authentik:** check that the container name and port in `/config/nginx/authentik-server.conf` match your Authentik server container.
 
 Only one provider is on at a time: choosing one comments out the other's lines. For subfolder configs (like `sonarr.subfolder.conf`), the matching `*-server.conf` line must also be switched on in SWAG's `site-confs/default.conf`, which SWAG Config GUI doesn't manage.
+
+## Status panel
+
+The **Status** tab reads each instance's health by running fixed commands inside the SWAG container (`nginx -v`, `php -v`, `nginx -T`, and reading `/config/keys/letsencrypt/fullchain.pem`):
+
+- **nginx / PHP** turn red when the version is older than the latest security fix SWAG Config GUI knows about. That list lives in `backend/src/lib/status.js` (`SECURITY_FLOORS`) with the date it was last checked, and is updated with releases, so keep SWAG Config GUI itself up to date. Green means "no known issue as of that date", not "safe forever".
+- **Protocols** shows whether HTTP/2 or HTTP/3 is switched on anywhere, which matters when an nginx flaw only affects one of them.
+- **Certificate** shows the domains, issuer and expiry. Certbot renews with 30 days left, so under 21 days it turns amber: renewal is probably failing. **Run renewal check** runs SWAG's own `/app/le-renew.sh`; it only renews when due, so it's safe to press any time.
 
 ## Allow lists
 

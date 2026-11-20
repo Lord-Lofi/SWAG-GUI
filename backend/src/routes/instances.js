@@ -5,6 +5,7 @@ import { validateHost, fileNameFor, renderHostConf, parseHostConf, AUTH_PROVIDER
 import * as errorPages from '../lib/errorPages.js';
 import * as templates from '../lib/templates.js';
 import * as features from '../lib/features.js';
+import * as status from '../lib/status.js';
 
 const router = Router();
 
@@ -220,6 +221,34 @@ router.put('/:id/hosts/:name', async (req, res) => {
 
   const result = await saveAndReload(instance, req.params.name, renderHostConf(host), previous);
   res.status(result.status).json({ ...result.body, updated: req.params.name });
+});
+
+// GET /api/instances/:id/status — nginx and PHP versions (checked against
+// known security fixes), HTTP/2 and HTTP/3, and the certificate
+router.get('/:id/status', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  res.json(await status.collect((cmd) => docker.exec(instance.container, cmd)));
+});
+
+// POST /api/instances/:id/status/renew — runs SWAG's own renewal script now.
+// Certbot only renews certificates that are due (under 30 days left), so
+// this is safe to press any time. One run per instance at a time.
+const renewing = new Set();
+router.post('/:id/status/renew', async (req, res) => {
+  const instance = getInstance(req.params.id);
+  if (renewing.has(instance.id)) {
+    throw Object.assign(new Error('A renewal is already running for this instance'), { status: 409 });
+  }
+  renewing.add(instance.id);
+  try {
+    const r = await docker.exec(instance.container, [status.RENEW_SCRIPT]);
+    res.status(r.exitCode === 0 ? 200 : 502).json({
+      ok: r.exitCode === 0,
+      output: (r.stdout + r.stderr).trim().slice(-20000),
+    });
+  } finally {
+    renewing.delete(instance.id);
+  }
 });
 
 // GET /api/instances/:id/templates/:name — what the activation form can

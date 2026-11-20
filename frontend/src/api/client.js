@@ -40,6 +40,10 @@ export const api = {
     preview:  (id, name, values) => request('POST', `/instances/${id}/templates/${encodeURIComponent(name)}/preview`, values),
     activate: (id, name, values) => request('POST', `/instances/${id}/templates/${encodeURIComponent(name)}/activate`, values),
   },
+  status: {
+    get:   (id) => request('GET',  `/instances/${id}/status`),
+    renew: (id) => request('POST', `/instances/${id}/status/renew`),
+  },
   errorPages: {
     status:  (id) => request('GET',  `/instances/${id}/errorpages`),
     install: (id) => request('POST', `/instances/${id}/errorpages`),

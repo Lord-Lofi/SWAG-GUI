@@ -58,7 +58,8 @@ export async function record(confsPath, filename, content, action, now = new Dat
     await writeFile(resolve(dir, `${stamp}__${action}.conf`), content, { encoding: 'utf8', flag: 'wx' });
     await prune(dir);
   } catch (err) {
-    console.error(`[history] could not save a version of ${filename}: ${err.message}`);
+    // JSON.stringify keeps any odd characters from starting a fake log line
+    console.error(`[history] could not save a version of ${JSON.stringify(String(filename))}: ${JSON.stringify(err.message)}`);
   }
 }
 
@@ -83,8 +84,13 @@ export async function versions(confsPath, filename) {
 }
 
 export async function read(confsPath, filename, versionId) {
+  // Two independent checks, like confFiles.safePath: the version id must
+  // match the strict pattern (no slashes or dots outside "…Z__x.conf"), and
+  // the resulting path must still be inside this file's history folder.
   if (!parseVersion(versionId)) throw invalid();
-  const path = resolve(fileDir(confsPath, filename), versionId);
+  const dir = fileDir(confsPath, filename);
+  const path = resolve(dir, versionId);
+  if (!path.startsWith(dir + sep)) throw invalid();
   try {
     return await readFile(path, 'utf8');
   } catch (err) {

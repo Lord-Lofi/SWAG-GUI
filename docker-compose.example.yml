@@ -62,34 +62,37 @@ services:
   # -- Docker socket proxy (LinuxServer.io) ------------------------------------
   # Sits between the GUI container and the Docker daemon, so the raw Docker
   # socket is never mounted into swag-gui. Made by LinuxServer.io, the same
-  # team as SWAG; a drop-in replacement for Tecnativa's docker-socket-proxy.
+  # team as SWAG.
+  #
+  # Runs with SWAG Config GUI's own strict rules (socket-proxy/haproxy.cfg in
+  # this repo) instead of the image's on/off switches. They allow only what
+  # the GUI uses (run a command in a SWAG container, read its output, read the
+  # container's image labels), and only for the two SWAG containers named in
+  # .env. Creating, starting, stopping or deleting containers, other
+  # containers, images, volumes and privileged commands are all refused.
+  # If the rules file isn't mounted, the image falls back to its own switches,
+  # which are all off below, so a missing mount fails safe: everything is
+  # blocked and the GUI just can't validate or reload.
   #
   # Pinned to a release instead of :latest so an upstream change can't reach
-  # this container unannounced. Check for new releases at
-  # https://github.com/linuxserver/docker-socket-proxy/releases
+  # this container unannounced. When changing the version, check the README
+  # section "Strict socket-proxy rules".
   socket-proxy:
     image: lscr.io/linuxserver/socket-proxy:3.4.7-r0-ls106
     container_name: swag-gui-socket-proxy
     restart: unless-stopped
     environment:
-      - CONTAINERS=1  # required: the exec call goes to /containers/<name>/exec
-      - EXEC=1        # required: run nginx -t / nginx -s reload inside SWAG
-      - POST=1        # required: creating and starting an exec is a POST request
-      # This image turns a few read-only sections on by default; SWAG-GUI
-      # needs none of them.
+      # The only containers SWAG Config GUI may reach (same names as in .env)
+      - SWAG_EXTERNAL_CONTAINER=${SWAG_EXTERNAL_CONTAINER:?Set SWAG_EXTERNAL_CONTAINER in .env}
+      - SWAG_INTERNAL_CONTAINER=${SWAG_INTERNAL_CONTAINER:?Set SWAG_INTERNAL_CONTAINER in .env}
+      # Only used if the rules file is missing: keep everything off
       - EVENTS=0
       - PING=0
       - VERSION=0
-      # Everything else is off. Copying files out of containers (archive),
-      # export, logs and pause stay blocked even with CONTAINERS=1.
-      # Do not enable IMAGES, NETWORKS, VOLUMES, or SERVICES unless a feature
-      # explicitly needs them.
-      #
-      # Note: POST=1 with CONTAINERS=1 still allows container create/start/stop
-      # through this proxy. Only swag-gui can reach it (socket-proxy-net is
-      # internal), which is why the GUI itself must stay locked down.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # The strict rules, in place of the image's own template
+      - ./socket-proxy/haproxy.cfg:/templates/haproxy.cfg:ro
     # Read-only container; it only writes its generated config to /run
     read_only: true
     tmpfs:

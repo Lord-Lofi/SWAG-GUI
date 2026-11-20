@@ -32,10 +32,10 @@ Browser (LAN)
       ├── Volume: /mnt/swag-external/proxy-confs  (rw)
       ├── Volume: /mnt/swag-internal/proxy-confs  (rw)
       └── LinuxServer.io socket-proxy  (internal network, no internet)
-            └── Docker API (exec + containers endpoints only)
+            └── Docker API (exec + inspect on the two SWAG containers only)
 ```
 
-The GUI container never holds the raw Docker socket. All Docker API access goes through [LinuxServer.io's socket-proxy](https://github.com/linuxserver/docker-socket-proxy) (from the team behind SWAG), which only allows the `containers` and `exec` endpoints. File copies out of containers, logs and exports stay blocked.
+The GUI container never holds the raw Docker socket. All Docker API access goes through [LinuxServer.io's socket-proxy](https://github.com/linuxserver/docker-socket-proxy) (from the team behind SWAG), running SWAG Config GUI's strict rules: commands and reads in the two SWAG containers only, nothing else (see [Strict socket-proxy rules](#strict-socket-proxy-rules)).
 
 ### Updates
 
@@ -124,6 +124,26 @@ docker compose logs socket-proxy     # should show the LinuxServer.io banner and
 ```
 
 Then press **Validate** in the GUI to confirm `nginx -t` still runs through the new proxy. The service name and port stay the same, so nothing else changes.
+
+### Strict socket-proxy rules
+
+The socket proxy runs with SWAG Config GUI's own rules, `socket-proxy/haproxy.cfg`, mounted over the image's template. LinuxServer.io's on/off switches work per API section, so turning on what the GUI needs (`CONTAINERS`, `EXEC`, `POST`) also allowed creating, starting and stopping any container, including a privileged one that mounts the host. The strict rules allow only:
+
+| Request | Used for |
+|---|---|
+| `POST /containers/<swag>/exec` | running `nginx -t`, reloads and status checks inside SWAG |
+| `POST /exec/<id>/start`, `GET /exec/<id>/json` | reading that command's output and exit code |
+| `GET /containers/<swag>/json` | the SWAG image's version labels (Status tab) |
+
+…and only for the two containers named in `.env` (`SWAG_EXTERNAL_CONTAINER`, `SWAG_INTERNAL_CONTAINER`). Commands asking for extra privileges are refused. Everything else gets a 403.
+
+**Switching an existing install:** your `docker-compose.yml` is your own copy, so on the server:
+
+1. `git pull` in the compose folder (this brings `socket-proxy/haproxy.cfg`).
+2. In `docker-compose.yml`'s `socket-proxy` service: replace the `environment:` list with the one from `docker-compose.example.yml` (the two container names plus `EVENTS`/`PING`/`VERSION=0`; `CONTAINERS`, `EXEC` and `POST` are no longer used) and add the `./socket-proxy/haproxy.cfg:/templates/haproxy.cfg:ro` volume line.
+3. `docker compose up -d socket-proxy`, then press **Validate** and open **Status** in the GUI.
+
+**When changing the socket-proxy version:** the rules file replaces the image's template, which the image fills in at startup (`@@BIND_PROTO@@`, `@@TIMEOUT_CLIENT@@`, `@@TIMEOUT_SERVER@@`). CI checks the file loads in the pinned version; if a new version adds placeholders, compare with its `root/templates/haproxy.cfg` before upgrading.
 
 ### Upgrading from 0.1.0
 
@@ -218,7 +238,7 @@ The Vite dev server proxies `/api` requests to the Express backend on port 3000.
 
 ## Security
 
-- Docker socket is proxied through LinuxServer.io's socket-proxy (pinned release, read-only container): only the `exec` and `containers` endpoints are permitted, file copies out of containers are blocked, and it sits on an internal network with no internet access
+- Docker socket is proxied through LinuxServer.io's socket-proxy (pinned release, read-only container) with strict rules: only exec and inspect on the two SWAG containers, no privileged commands, no creating, starting, stopping or deleting containers; it sits on an internal network with no internet access
 - The GUI container runs as your SWAG PUID/PGID, not root, with all Linux capabilities dropped and `no-new-privileges`
 - Volume mounts are scoped to `nginx/proxy-confs/` only — certs and DNS credentials are excluded
 - All filenames are checked against an allowlist and must resolve inside the proxy-confs folder, which prevents path traversal

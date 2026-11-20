@@ -49,7 +49,7 @@ function Switch({ label, state, title, onChange }) {
   );
 }
 
-export default function ConfList({ confs, withHistory = new Set(), deleted = [], onEdit, onEditFile, onDelete, onSetting, onHistory }) {
+export default function ConfList({ confs, withHistory = new Set(), deleted = [], onEdit, onDuplicate, onEditFile, onDelete, onSetting, onHistory }) {
   const deletedList = deleted.length > 0 && (
     <section className="mt-6">
       <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-2">Deleted files</h3>
@@ -130,7 +130,17 @@ export default function ConfList({ confs, withHistory = new Set(), deleted = [],
               )}
               {conf.managed && (
                 <button
+                  onClick={() => onDuplicate(conf.name)}
+                  title="New host with the same settings"
+                  className="px-2 py-1 text-xs text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline"
+                >
+                  Duplicate
+                </button>
+              )}
+              {conf.managed && (
+                <button
                   onClick={() => onEdit(conf.name)}
+                  title="Change settings or rename"
                   className="px-3 py-1 rounded-sm text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors border border-gray-700"
                 >
                   Edit

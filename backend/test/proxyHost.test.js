@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateHost, fileNameFor, renderHostConf, parseHostConf } from '../src/lib/proxyHost.js';
 
-const good = { subdomain: 'plex', upstreamApp: 'plex', upstreamPort: 32400, upstreamProto: 'http', auth: 'none', errorPages: false, allowList: [] };
+const good = { subdomain: 'plex', upstreamApp: 'plex', upstreamPort: 32400, upstreamProto: 'http', auth: 'none', errorPages: false, allowList: [], maxBodySize: '0' };
 
 test('accepts a normal host and fills defaults', () => {
   assert.deepEqual(validateHost(good), good);
@@ -142,4 +142,26 @@ test('renders the allow list and reads it back', () => {
   assert.match(conf, /    allow 192\.168\.0\.0\/16;\n    allow fd00::\/8;\n    deny all;\n/);
   assert.deepEqual(parseHostConf(conf), host);
   assert.doesNotMatch(renderHostConf(good), /deny all/, 'no allow list means anyone may connect');
+});
+
+test('upload size limit: unlimited by default, or whole MB / GB', () => {
+  assert.equal(validateHost({ ...good, maxBodySize: undefined }).maxBodySize, '0');
+  for (const [given, stored] of [['0', '0'], ['1m', '1m'], ['100M', '100m'], [' 10g ', '10g'], ['99999g', '99999g']]) {
+    assert.equal(validateHost({ ...good, maxBodySize: given }).maxBodySize, stored);
+  }
+  for (const bad of ['', '-1m', '1.5g', '100', '100k', '01m', '100000m', '1m;', '1m include x', '1t']) {
+    assert.throws(() => validateHost({ ...good, maxBodySize: bad }), { status: 400, field: 'maxBodySize' }, bad);
+  }
+  const conf = renderHostConf({ ...good, maxBodySize: '100m' });
+  assert.match(conf, /^    client_max_body_size 100m;$/m);
+  assert.equal(parseHostConf(conf).maxBodySize, '100m');
+});
+
+test('hosts made before the upload-size option still open in the form unchanged', () => {
+  // Files written by earlier versions always had "client_max_body_size 0;"
+  const old = renderHostConf({ ...good, maxBodySize: undefined }, new Date('2026-11-01T00:00:00Z'));
+  assert.match(old, /client_max_body_size 0;/);
+  const parsed = parseHostConf(old);
+  assert.equal(parsed.maxBodySize, '0');
+  assert.equal(renderHostConf(parsed, new Date('2026-11-01T00:00:00Z')), old);
 });

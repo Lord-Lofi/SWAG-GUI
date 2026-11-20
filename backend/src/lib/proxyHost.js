@@ -22,6 +22,11 @@ const PROTOCOLS = new Set(['http', 'https']);
 export const AUTH_PROVIDERS = ['authelia', 'authentik'];
 const AUTH_CHOICES = new Set(['none', ...AUTH_PROVIDERS]);
 
+// Upload size limit (nginx client_max_body_size): "0" means unlimited, as in
+// SWAG's own templates; otherwise a whole number of megabytes or gigabytes,
+// e.g. "100m" or "1g". Capped at 100000 (about 100 TB, i.e. effectively none).
+const BODY_SIZE = /^(0|[1-9][0-9]{0,4}[mg])$/;
+
 // Allow lists: at most this many addresses or ranges per host
 const MAX_ALLOW = 50;
 
@@ -86,7 +91,12 @@ export function validateHost(input) {
 
   const allowList = validateAllowList(input.allowList);
 
-  return { subdomain, upstreamApp, upstreamPort, upstreamProto, auth, errorPages, allowList };
+  const maxBodySize = input.maxBodySize === undefined ? '0' : String(input.maxBodySize).trim().toLowerCase();
+  if (!BODY_SIZE.test(maxBodySize)) {
+    throw invalid('maxBodySize', 'use unlimited, or a whole number of MB or GB (e.g. 100m, 1g)');
+  }
+
+  return { subdomain, upstreamApp, upstreamPort, upstreamProto, auth, errorPages, allowList, maxBodySize };
 }
 
 // An allow list is a list of IPv4/IPv6 addresses or CIDR ranges
@@ -122,7 +132,7 @@ export function fileNameFor(subdomain) {
 // Renders the config in the same layout as linuxserver.io's own
 // *.subdomain.conf.sample files.
 export function renderHostConf(host, now = new Date()) {
-  const { subdomain, upstreamApp, upstreamPort, upstreamProto, auth: signIn, errorPages, allowList = [] } = host;
+  const { subdomain, upstreamApp, upstreamPort, upstreamProto, auth: signIn, errorPages, allowList = [], maxBodySize = '0' } = host;
   // With no sign-in, the Authelia lines are written commented out, as before
   const provider = signIn === 'authentik' ? 'authentik' : 'authelia';
   const name = provider === 'authentik' ? 'Authentik' : 'Authelia';
@@ -142,7 +152,7 @@ server {
 
     include /config/nginx/ssl.conf;
 
-    client_max_body_size 0;
+    client_max_body_size ${maxBodySize};
 ${errorPages ? '\n    # Friendly error pages (service down, access denied)\n    ' + ERROR_PAGES_INCLUDE + '\n' : ''}${allowList.length ? '\n    # Allow list: only these addresses may connect; everyone else gets 403\n' + allowList.map((a) => `    allow ${a};\n`).join('') + '    deny all;\n' : ''}
     ${signIn !== 'none' ? `# ${name}: sign-in required before reaching this service` : '# Authelia: off. Remove the # from both include lines below to turn it on.'}
 ${toggle(`    include /config/nginx/${provider}-server.conf;`)}
@@ -180,6 +190,7 @@ export function parseHostConf(content) {
     auth: content.match(/^\s*include \/config\/nginx\/(authelia|authentik)-server\.conf;$/m)?.[1] ?? 'none',
     errorPages: content.includes(`    ${ERROR_PAGES_INCLUDE}\n`),
     allowList: [...content.matchAll(/^    allow (\S+);$/gm)].map((m) => m[1]),
+    maxBodySize: pick(/^    client_max_body_size (\S+);$/m),
   };
   if (!date || !values.subdomain) return null;
 

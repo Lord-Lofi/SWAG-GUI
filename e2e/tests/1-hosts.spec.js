@@ -32,7 +32,7 @@ test.describe('proxy hosts', () => {
   test('edits a form-made host with the form, including sign-in and allow list', async ({ page }) => {
     await page.goto('/');
     await confRow(page, 'jellyfin.subdomain.conf').getByRole('button', { name: 'Edit', exact: true }).click();
-    await expect(page.locator('#subdomain')).toBeDisabled();
+    await expect(page.locator('#subdomain')).toHaveValue('jellyfin');
     await expect(page.locator('#upstreamPort')).toHaveValue('8096');
 
     await fillHost(page, { upstreamPort: 8920 });

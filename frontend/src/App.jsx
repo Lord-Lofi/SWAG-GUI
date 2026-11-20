@@ -58,6 +58,12 @@ export default function App() {
     setHostForm({ editName: name, initial: host });
   }
 
+  // Duplicate: a new host with the same settings; only the subdomain is new
+  async function handleDuplicate(name) {
+    const { host } = await api.hosts.get(activeInstance, name);
+    setHostForm({ initial: { ...host, subdomain: '' } });
+  }
+
   // Advanced: edit file, in the editor
   async function handleEditFile(name) {
     const { content } = await api.confs.read(activeInstance, name);
@@ -133,7 +139,9 @@ export default function App() {
 
   function handleHostSaved(result) {
     setHostForm(null);
-    const what = result.created ? `Created ${result.created}` : `Saved ${result.updated}`;
+    const what = result.renamed
+      ? `Renamed ${result.renamed} to ${result.updated}`
+      : result.created ? `Created ${result.created}` : `Saved ${result.updated}`;
     setStatus({
       type: result.ok ? 'success' : 'error',
       message: result.ok
@@ -266,6 +274,7 @@ export default function App() {
             deleted={historyFiles.filter(f => !f.exists && !OWN_FILES.has(f.name))}
             onHistory={(name, exists = true) => setHistoryOf({ name, exists })}
             onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
             onEditFile={handleEditFile}
             onDelete={handleDelete}
             onSetting={handleSetting}

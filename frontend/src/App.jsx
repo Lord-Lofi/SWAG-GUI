@@ -4,6 +4,7 @@ import ConfList from './components/ConfList.jsx';
 import TemplateBrowser from './components/TemplateBrowser.jsx';
 import HostModal from './components/HostModal.jsx';
 import ActivateTemplateModal from './components/ActivateTemplateModal.jsx';
+import StatusPanel from './components/StatusPanel.jsx';
 import { api } from './api/client.js';
 
 // The editor (Monaco, several MB) only downloads when "Edit file" is used
@@ -184,7 +185,7 @@ export default function App() {
 
       {/* Navigation + actions */}
       <div className="flex items-center gap-1 px-6 pt-4 pb-2 border-b border-gray-800">
-        {['confs', 'templates'].map(v => (
+        {['confs', 'templates', 'status'].map(v => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -194,7 +195,7 @@ export default function App() {
                 : 'text-gray-400 hover:text-white hover:bg-gray-800'
             }`}
           >
-            {v === 'confs' ? 'Active Configs' : 'Templates'}
+            {{ confs: 'Active Configs', templates: 'Templates', status: 'Status' }[v]}
           </button>
         ))}
         <div className="ml-auto flex gap-2">
@@ -232,6 +233,8 @@ export default function App() {
       <main className="flex-1 px-6 py-4">
         {loading ? (
           <p className="text-gray-600 text-sm mt-4">Loading...</p>
+        ) : view === 'status' ? (
+          activeInstance && <StatusPanel instanceId={activeInstance} />
         ) : view === 'confs' ? (
           <ConfList
             confs={confs.filter(c => !c.isSample && !OWN_FILES.has(c.name))}
